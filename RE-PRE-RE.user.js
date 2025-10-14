@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name           ReabrirPrereq Selector
+// @name           RE-PRE-RE
 // @namespace      https://accesosede.my.salesforce.com/
 // @description    Selector Tipo/Subtipo/Nombre con lectura automática del “Nombre del Pre-requisito”, búsqueda y plantillas. Tema claro/oscuro automático. Sin clics ni APIs.
 // @match          http*://*.force.com/*
@@ -327,6 +327,7 @@
 
     const menu = document.createElement('div');
     menu.className = 'rp-menu';
+    menu.style.display = 'none'; // <-- añade esta línea
 
     const search = document.createElement('input');
     search.type = 'text';
@@ -372,7 +373,12 @@
     function show(){ if(disabled) return; menu.style.display = 'block'; search.focus(); render(); }
     function hide(){ menu.style.display = 'none'; }
 
-    btn.onclick = (e)=>{ e.stopPropagation(); menu.style.display==='none' ? show() : hide(); };
+    btn.onclick = (e) => {
+        e.stopPropagation();
+        const isHidden = getComputedStyle(menu).display === 'none';
+        isHidden ? show() : hide(); // <-- en vez de menu.style.display==='none'
+    };
+
 
     search.oninput = ()=>{
       const q = search.value.trim().toLowerCase();
@@ -627,4 +633,3 @@
   })();
 
 })();
-

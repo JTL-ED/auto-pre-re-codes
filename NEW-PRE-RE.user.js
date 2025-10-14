@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         SF AUTO-PRE
+// @name         NEW-PRE-RE
 // @namespace    https://your-space.example
 // @version      1.0.2
 // @description  Relleno/limpieza automática de "Nombre del Pre-requisito" y "Comunicación al cliente (push)" según Tipo/Subtipo; solo 01/01 y 01/07 muestran un modal de selección centrado; limpieza al cambiar Tipo.
 // @match        https://*.lightning.force.com/*
 // @match        https://*.salesforce.com/*
+// @author       Jiatai + GPT
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -163,7 +164,8 @@ async function resolveRuleValueUI(key, rule){
       return rule[0] ?? '';
     }
     if (ST.modalOpen || ST.choosing) return null;
-    return await showChoiceModal(`Seleccione texto para ${key}`, rule);
+    return await showChoiceModal(`Seleccione PRE-RE`,rule);
+    //return await showChoiceModal(`Seleccione texto para ${key}`, rule);
   }
   return rule ?? '';
 }
