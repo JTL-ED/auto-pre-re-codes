@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         prova 1.1 all rules v2 funcional
+// @name         NEW-PRE-RE-v2
 // @namespace    https://your-space.example
 // @version      1.2.0
 // @description  solucionar modal ventana
