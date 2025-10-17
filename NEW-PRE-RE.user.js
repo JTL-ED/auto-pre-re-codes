@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NEW-Pre-re v3
 // @namespace    https://your-space.example
-// @version      1..0
+// @version      1.4.0
 // @description  solucionar modal ventana
 // @match        https://*.lightning.force.com/*
 // @match        https://*.salesforce.com/*
@@ -16,25 +16,26 @@
 
     const NAME_RULES = {
         '01/01': [{label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT'],
-        '01/02': '',
-        '01/03': '',
+        //'01/02': '',
+        //'01/03': '',
         '01/04': 'CES OC',
         '01/06': 'IE',
         '01/07': ['FASE OBRA', 'ANULAR', 'PTE ACT CLIENT'],
-        '01/17': '',
-        '01/18': 'OBRA CIVIL',
         '01/19': 'CES',
+        //'01/17': '',
+        '01/18': 'OBRA CIVIL',
         '01/20': 'AJUSTAT',
         '01/21': 'ACTA',
 
         '02/08': 'ESCREIX',
 
-        '03/07': ['OBRA BACKLOG', 'CP1', 'SUPEDITAT', 'CIVICOS', 'ESTUDI', 'AGP', 'CTR', 'FASES', 'TRAÇAT', 'CE'],
         '03/09': 'CP2',
+        //'03/10': '',
         '03/11': {label: 'PART', write: 'PART', key: 'PART_Permiso' },
+        //'03/12': '',
         '03/13': 'PER',
         '03/14': 'APS',
-
+        '03/07': ['OBRA BACKLOG', 'CP1', 'SUPEDITAT', 'CIVICOS', 'ESTUDI', 'AGP', 'CTR', 'FASES', 'TRAÇAT', 'CE'],
     };
 
     const COMM_RULES_3 = {
@@ -87,27 +88,29 @@
         lockNameOnce: false,
         lastNameKey: null, // 用于 COMM_RULES_3 的第三键（优先 key，没有则回退到文本）
         preNameOverride: null, // 一次性覆盖 applyName 的写入（{write, key}）
+        noProcShownKey: null, // 记录已提示过的 `${tipo}/${subtipo}` 组合
+
     };
 
 
 
     // —— ESTUDI 的目标 Tipo/Subtipo + 变体 —— //
-const ESTUDI_TARGET = { tipo: '03', subtipo: '07' };
-const ESTUDI_VARIANTS = [
-  { label: 'ESTUDI - PER',    write: 'ESTUDI - PER',    key: 'ESTUDI_PER' },
-  { label: 'ESTUDI - PART',   write: 'ESTUDI - PART',   key: 'ESTUDI_PART' },
-  { label: 'ESTUDI - CAR',    write: 'ESTUDI - CAR',    key: 'ESTUDI_CAR' },
-  { label: 'ESTUDI - ERROR',  write: 'ESTUDI - ERROR',  key: 'ESTUDI_ERROR' },
-  { label: 'ESTUDI - CLIENT', write: 'ESTUDI - CLIENT', key: 'ESTUDI_CLIENT' },
-  { label: 'ESTUDI - EXE',    write: 'ESTUDI - EXE',    key: 'ESTUDI_EXE' },
-  { label: 'ESTUDI - SO',     write: 'ESTUDI - SO',     key: 'ESTUDI_SO' },
-];
+    const ESTUDI_TARGET = { tipo: '03', subtipo: '07' };
+    const ESTUDI_VARIANTS = [
+        { label: 'ESTUDI - PER', write: 'ESTUDI - PER', key: 'ESTUDI_PER' },
+        { label: 'ESTUDI - PART', write: 'ESTUDI - PART', key: 'ESTUDI_PART' },
+        { label: 'ESTUDI - CAR', write: 'ESTUDI - CAR', key: 'ESTUDI_CAR' },
+        { label: 'ESTUDI - ERROR', write: 'ESTUDI - ERROR', key: 'ESTUDI_ERROR' },
+        { label: 'ESTUDI - CLIENT', write: 'ESTUDI - CLIENT', key: 'ESTUDI_CLIENT' },
+        { label: 'ESTUDI - EXE', write: 'ESTUDI - EXE', key: 'ESTUDI_EXE' },
+        { label: 'ESTUDI - SO', write: 'ESTUDI - SO', key: 'ESTUDI_SO' },
+    ];
 
-// 统一的 ESTUDI 二级弹窗（按字母排序展示）
-async function pickEstudiVariant() {
-  const sorted = [...ESTUDI_VARIANTS].sort((a,b) => (a.label||'').localeCompare(b.label||'', 'es', {sensitivity:'base'}));
-  return await showChoiceModal('Seleccione Pre-requisito (ESTUDI)', sorted);
-}
+    // 统一的 ESTUDI 二级弹窗（按字母排序展示）
+    async function pickEstudiVariant() {
+        const sorted = [...ESTUDI_VARIANTS].sort((a,b) => (a.label||'').localeCompare(b.label||'', 'es', {sensitivity:'base'}));
+        return await showChoiceModal('Seleccione Pre-requisito (ESTUDI)', sorted);
+    }
 
 
     /***  Utils comunes  ***/
@@ -212,51 +215,48 @@ async function pickEstudiVariant() {
 
 
 
-function showChoiceModal(title, choices) {
-  if (ST.modalOpen || ST.choosing) return Promise.resolve(null);
-  ST.modalOpen = true; ST.choosing = true;
+    function showChoiceModal(title, choices) {
+        if (ST.modalOpen || ST.choosing) return Promise.resolve(null);
+        ST.modalOpen = true; ST.choosing = true;
 
-  // 可保留你已有的排序
-  choices = [...choices].sort((a,b) => {
-    const n = x => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim();
-    return n(a).localeCompare(n(b), 'es', {sensitivity:'base'});
-  });
+        // 可保留你已有的排序
+        choices = [...choices].sort((a,b) => {
+            const n = x => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim();
+            return n(a).localeCompare(n(b), 'es', {sensitivity:'base'});
+        });
 
-  // —— 关键：按选项数量动态决定列数（最多3列） —— //
-  const MAX_COLS = 3;
-  const BTN_MIN_W = 160; // 每个按钮的最小宽度（可调）
-  const GAP = 10; // 按钮间距（可调）
-  const cols = Math.min(MAX_COLS, Math.max(1, choices.length));
+        // —— 关键：按选项数量动态决定列数（最多3列） —— //
+        const MAX_COLS = 3;
+        const BTN_MIN_W = 110; // 每个按钮的最小宽度（可调）
+        const GAP = 10; // 按钮间距（可调）
+        const cols = Math.min(MAX_COLS, Math.max(1, choices.length));
 
-  return new Promise(resolve => {
-    const root = document.createElement('div');
-    root.id = '__af_modal_root__';
-    root.innerHTML = `
+        return new Promise(resolve => {
+            const root = document.createElement('div');
+            root.id = '__af_modal_root__';
+            root.innerHTML = `
       <div class="af-backdrop"></div>
       <div class="af-modal" role="dialog" aria-modal="true" aria-label="${title}">
         <div class="af-header">${title}</div>
         <div class="af-body">
           ${choices.map((c,i)=>{
-            const lbl = (typeof c === 'object') ? c.label : c;
-            return `<button class="af-option" data-idx="${i}" type="button" title="${lbl}">${lbl}</button>`;
-          }).join('')}
+                const lbl = (typeof c === 'object') ? c.label : c;
+                return `<button class="af-option" data-idx="${i}" type="button" title="${lbl}">${lbl}</button>`;
+            }).join('')}
         </div>
         <div class="af-actions"><button class="af-cancel" type="button">Cancelar</button></div>
       </div>`;
 
-    const style = document.createElement('style');
-    style.textContent = `
+            const style = document.createElement('style');
+            style.textContent = `
       #__af_modal_root__{position:fixed;inset:0;z-index:999999;font-family:system-ui,Segoe UI,Arial,Helvetica,sans-serif}
       #__af_modal_root__ .af-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.35)}
-
       #__af_modal_root__ .af-modal{
         position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
         background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);
         padding:16px;display:flex;flex-direction:column;gap:12px;
         /* 根据列数自适应最大宽度：按钮宽度 * 列数 + 间距 + 内边距 */
-        width:fit-content;
-        max-width:90vw;
-        min-width:360px;
+        width:fit-content;max-width:90vw;min-width:360px;
       }
       #__af_modal_root__ .af-header{font-weight:600;font-size:16px}
       #__af_modal_root__ .af-body{
@@ -277,20 +277,61 @@ function showChoiceModal(title, choices) {
       #__af_modal_root__ .af-cancel{padding:8px 12px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}
       #__af_modal_root__ .af-cancel:hover{background:#f7f7f7}
     `;
+            document.body.appendChild(style);
+            document.body.appendChild(root);
+
+            const cleanup=()=>{ root.remove(); style.remove(); ST.modalOpen=false; ST.choosing=false; };
+            root.querySelectorAll('.af-option').forEach((btn, i)=>{
+                btn.addEventListener('click',()=>{ const choice = choices[i]; cleanup(); resolve(choice ?? null); });
+            });
+            root.querySelector('.af-cancel').addEventListener('click',()=>{ cleanup(); resolve(null); });
+            root.querySelector('.af-backdrop').addEventListener('click', ()=>{ cleanup(); resolve(null); });
+            const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); resolve(null); } };
+            document.addEventListener('keydown', onKey, { once:true });
+        });
+    }
+
+
+    function showNoticeModal(message){
+  if (ST.modalOpen || ST.choosing) return Promise.resolve(); // 避免与其它弹窗打架
+  ST.modalOpen = true; ST.choosing = true;
+
+  return new Promise(resolve => {
+    const root = document.createElement('div');
+    root.id = '__af_notice_root__';
+    root.innerHTML = `
+      <div class="af-backdrop"></div>
+      <div class="af-modal" role="dialog" aria-modal="true" aria-label="Aviso">
+        <div class="af-header">Aviso</div>
+        <div class="af-body"><div class="af-msg" style="padding:6px 2px;">${message}</div></div>
+        <div class="af-actions"><button class="af-ok" type="button">Aceptar</button></div>
+      </div>`;
+
+    const style = document.createElement('style');
+    style.textContent = `
+      #__af_notice_root__{position:fixed;inset:0;z-index:999999;font-family:system-ui,Segoe UI,Arial,Helvetica,sans-serif}
+      #__af_notice_root__ .af-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.35)}
+      #__af_notice_root__ .af-modal{
+        position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+        background:#fff;border-radius:12px;min-width:360px;max-width:560px;
+        box-shadow:0 20px 60px rgba(0,0,0,.3);
+        padding:16px;display:flex;flex-direction:column;gap:12px
+      }
+      #__af_notice_root__ .af-header{font-weight:600;font-size:16px}
+      #__af_notice_root__ .af-actions{display:flex;justify-content:flex-end}
+      #__af_notice_root__ .af-ok{padding:8px 12px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}
+      #__af_notice_root__ .af-ok:hover{background:#f7f7f7}
+    `;
     document.body.appendChild(style);
     document.body.appendChild(root);
 
-    const cleanup=()=>{ root.remove(); style.remove(); ST.modalOpen=false; ST.choosing=false; };
-    root.querySelectorAll('.af-option').forEach((btn, i)=>{
-      btn.addEventListener('click',()=>{ const choice = choices[i]; cleanup(); resolve(choice ?? null); });
-    });
-    root.querySelector('.af-cancel').addEventListener('click',()=>{ cleanup(); resolve(null); });
-    root.querySelector('.af-backdrop').addEventListener('click', ()=>{ cleanup(); resolve(null); });
-    const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); resolve(null); } };
+    const cleanup=()=>{ root.remove(); style.remove(); ST.modalOpen=false; ST.choosing=false; resolve(); };
+    root.querySelector('.af-ok').addEventListener('click', cleanup);
+    root.querySelector('.af-backdrop').addEventListener('click', cleanup);
+    const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); } };
     document.addEventListener('keydown', onKey, { once:true });
   });
 }
-
 
 
     async function resolveRuleValueUI(key, rule){
@@ -305,7 +346,7 @@ function showChoiceModal(title, choices) {
             const toLabel = (x) => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim();
             const sortedRule = [...rule].sort((a, b) => toLabel(a).localeCompare(toLabel(b), 'es', { sensitivity: 'base' }));
 
-            const picked = await showChoiceModal(`Seleccione Pre-re`, sortedRule);
+            const picked = await showChoiceModal(`Seleccione Pre-requisito`, sortedRule);
             if (!picked) return null; // ← 先判空
 
             // 如果是 03/07 且用户选了 ESTUDI，则转入 ESTUDI 二级弹窗
@@ -362,7 +403,7 @@ function showChoiceModal(title, choices) {
                 if (!x) return;
                 const label = (typeof x==='object') ? (x.label ?? x.write ?? '') : x;
                 const write = (typeof x==='object') ? (x.write ?? x.label ?? '') : x;
-                const k = (typeof x==='object') ? (x.key   ?? write) : write;
+                const k = (typeof x==='object') ? (x.key ?? write) : write;
                 // 只关心 write === 'PART' 的条目（比如 PART-Acciones / PART-Permiso）
                 if (String(write).trim().toUpperCase() !== 'PART') return;
                 const gk = `${tipo}/${subtipo}`;
@@ -486,7 +527,7 @@ function showChoiceModal(title, choices) {
             display:'grid',
             gridTemplateColumns:'repeat(2, minmax(100px, 1fr))', // ← 2 colum；min 160px,width
             gap:'6px',
-            maxHeight:'min(60vh, 400px)', // ← no bigger than 60% or 360px
+            maxHeight:'min(60vh, 394px)', // ← no bigger than 60% or 360px para ajustar la ventana flotante de nombre del prerequisito.
             overflow:'auto',
             width:'100%' // ← width
         });
@@ -604,51 +645,51 @@ function showChoiceModal(title, choices) {
 
 
         // —— 单一“ESTUDI”按钮：点击后弹 7 个 ESTUDI 选项 —— //
-function mkUniversalEstudiBtn(){
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.textContent = 'ESTUDI';
-  Object.assign(b.style, {
-    fontSize:'12px', padding:'8px 10px', borderRadius:'8px',
-    border:'1px solid #d7d2d7', background:'#f6f7f9',
-    cursor:'pointer', textAlign:'left', width:'100%'
-  });
-  b.addEventListener('mouseenter', () => { b.style.background = '#eef2ff'; b.style.borderColor = '#c7d2fe'; });
-  b.addEventListener('mouseleave', () => { b.style.background = '#f6f7f9'; b.style.borderColor = '#d7d2d7'; });
+        function mkUniversalEstudiBtn(){
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = 'ESTUDI';
+            Object.assign(b.style, {
+                fontSize:'12px', padding:'8px 10px', borderRadius:'8px',
+                border:'1px solid #d7d2d7', background:'#f6f7f9',
+                cursor:'pointer', textAlign:'left', width:'100%'
+            });
+            b.addEventListener('mouseenter', () => { b.style.background = '#eef2ff'; b.style.borderColor = '#c7d2fe'; });
+            b.addEventListener('mouseleave', () => { b.style.background = '#f6f7f9'; b.style.borderColor = '#d7d2d7'; });
 
-  b.addEventListener('pointerdown', async (ev) => {
-    ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
-    ST._insidePickerClick = true; queueMicrotask(()=>{ ST._insidePickerClick = false; });
+            b.addEventListener('pointerdown', async (ev) => {
+                ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
+                ST._insidePickerClick = true; queueMicrotask(()=>{ ST._insidePickerClick = false; });
 
-    // 先弹出 ESTUDI 变体
-      // …… pickEstudiVariant() 之后：
-      const v = await pickEstudiVariant();
-      if (!v) { destroyPicker(); return; }
+                // 先弹出 ESTUDI 变体
+                // …… pickEstudiVariant() 之后：
+                const v = await pickEstudiVariant();
+                if (!v) { destroyPicker(); return; }
 
-      // 关键：告诉 applyName 这一次不要弹窗，直接写 ESTUDI - XXX
-      ST.preNameOverride = { write: v.write, key: v.key };
-      ST.lockNameOnce    = true;
-      ST.lastTextName    = v.write;
-      ST.lastNameKey     = v.key;
+                // 关键：告诉 applyName 这一次不要弹窗，直接写 ESTUDI - XXX
+                ST.preNameOverride = { write: v.write, key: v.key };
+                ST.lockNameOnce    = true;
+                ST.lastTextName    = v.write;
+                ST.lastNameKey     = v.key;
 
-      // 设定 03/07
-      ensurePickHosts();
-      await setComboValue(ST.tipoHost, ESTUDI_TARGET.tipo);
-      setTimeout(async () => {
-          await setComboValue(ST.subtipoHost, ESTUDI_TARGET.subtipo);
+                // 设定 03/07
+                ensurePickHosts();
+                await setComboValue(ST.tipoHost, ESTUDI_TARGET.tipo);
+                setTimeout(async () => {
+                    await setComboValue(ST.subtipoHost, ESTUDI_TARGET.subtipo);
 
-          // 写入“Nombre del Pre-requisito” = ESTUDI - XXX（冗余写一次更稳）
-          ST.nameHost = findHostByLabel(NAME_LABEL_RX, ['lightning-input']) || ST.nameHost;
-          if (ST.nameHost) writeHostValue(ST.nameHost, v.write);
+                    // 写入“Nombre del Pre-requisito” = ESTUDI - XXX（冗余写一次更稳）
+                    ST.nameHost = findHostByLabel(NAME_LABEL_RX, ['lightning-input']) || ST.nameHost;
+                    if (ST.nameHost) writeHostValue(ST.nameHost, v.write);
 
-          // 不写 comunicación：applyComm 命不中会保持空
-          applyComm();
-          destroyPicker();
-      }, 180);
+                    // 不写 comunicación：applyComm 命不中会保持空
+                    applyComm();
+                    destroyPicker();
+                }, 180);
 
-  });
-  return b;
-}
+            });
+            return b;
+        }
 
 
         // —— 构造候选清单：过滤空项 + 去掉单个 PART/ESTUDI 变体 + 注入“唯一 PART/ESTUDI” —— //
@@ -713,27 +754,38 @@ function mkUniversalEstudiBtn(){
 
                 // —— 如果有一次性预选结果，直接写入并跳过弹窗 —— //
                 if (ST.preNameOverride) {
-                    const picked = ST.preNameOverride;     // { write, key }
-                    ST.preNameOverride = null;             // 只用一次
+                    const picked = ST.preNameOverride; // { write, key }
+                    ST.preNameOverride = null; // 只用一次
                     ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
                     if (ST.nameHost) {
                         writeHostValue(ST.nameHost, picked.write || '');
                         ST.lastTextName = picked.write || '';
-                        ST.lastNameKey  = picked.key   || (picked.write || '');
+                        ST.lastNameKey = picked.key || (picked.write || '');
                     }
-                    ST.lastKeyName = key;   // key = `${ST.tipo}/${ST.subtipo}`
-                    applyComm();            // 继续写通信文案（会用到第三键）
-                    return;                 // 不再触发 resolveRuleValueUI → 不会弹窗
+                    ST.lastKeyName = key; // key = `${ST.tipo}/${ST.subtipo}`
+                    applyComm(); // 继续写通信文案（会用到第三键）
+                    return; // 不再触发 resolveRuleValueUI → 不会弹窗
                 }
 
 
                 if (rule === undefined) {
+                    // 原有的清空逻辑
                     if (ST.lastTextName && ST.lastTextName !== '') {
-                        if (writeHostValue(ST.nameHost, '')) ST.lastTextName='';
+                        if (writeHostValue(ST.nameHost, '')) ST.lastTextName = '';
                     }
                     ST.lastKeyName = key;
+
+                    // 新增：只对当前组合提示一次
+                    const k = key; // `${ST.tipo}/${ST.subtipo}`
+                    if (ST.tipo && ST.subtipo && ST.noProcShownKey !== k) {
+                        ST.noProcShownKey = k;
+                        const msg = `No procede el prerrequisito con el TIPO y SUBTIPO seleccionados.`;
+                        //const msg = `No procede el prerrequisito con el TIPO "${ST.tipo}" y SUBTIPO "${ST.subtipo}" seleccionados.`;
+                        await showNoticeModal(msg);
+                    }
                     return;
                 }
+
 
                 if (ST.lockNameOnce) {
                     ST.lockNameOnce = false;
@@ -935,11 +987,14 @@ function mkUniversalEstudiBtn(){
         ST.lastNameKey  = null;
         ST.lastKeyComm  = null;
         ST.lastTextComm = '';
+        ST.noProcShownKey = null;
+
 
         // Hosts
         ensurePickHosts();
         ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
         ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text']);
+
 
         // Limpiar Subtipo (combobox)
         if (ST.subtipoHost) {
