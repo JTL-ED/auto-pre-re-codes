@@ -26,9 +26,7 @@
         '01/18': 'OBRA CIVIL',
         '01/20': 'AJUSTAT',
         '01/21': 'ACTA',
-
         '02/08': 'ESCREIX',
-
         '03/09': 'CP2',
         //'03/10': '',
         '03/11': {label: 'PART', write: 'PART', key: 'PART_Permiso' },
@@ -41,15 +39,10 @@
     const COMM_RULES_3 = {
         '01/01/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
         '01/01/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
-
         '01/07/FASE OBRA': '',
         '01/07/ANULAR': 'Pendiente aportación carta de anulación, justificante de pago y certificado de titularidad bancaria.',
         '01/07/PTE ACT CLIENT': 'Temporalmente, la gestión del expediente queda suspendida a la espera de la aportación por su parte de los documentos que se le han requerido.',
 
-
-        //'01/01/PART_Permiso': '（PART 文案 A）',
-        //'03/07/PART_BAKLOG': '（PART 文案 B）',
-        // 以前用 '.../PART' 的也还能继续用；有 key 的优先用 key
     };
 
     const COMM_RULES_2 = {
@@ -92,8 +85,6 @@
 
     };
 
-
-
     // —— ESTUDI 的目标 Tipo/Subtipo + 变体 —— //
     const ESTUDI_TARGET = { tipo: '03', subtipo: '07' };
     const ESTUDI_VARIANTS = [
@@ -112,8 +103,6 @@
         return await showChoiceModal('Seleccione Pre-requisito (ESTUDI)', sorted);
     }
 
-
-    /***  Utils comunes  ***/
     /* ==== 安全版 walkDeep：有限深度 / 有限节点，防止拖死页面 ==== */
     function* walkDeep(root, opts = {}) {
         const MAX_NODES = opts.maxNodes ?? 2000; // 单次最多遍历多少节点（可按需调小/调大）
@@ -187,13 +176,11 @@
         return null;
     }
 
-
     function writeHostValue(host, text=''){
         try{
             if(!host) return false;
             const current = (host.value ?? '');
             if(current === text) return true;
-
             host.value = text;
 
             // Notificar a Lightning que el valor cambió
@@ -204,7 +191,6 @@
             }
             host.dispatchEvent(new CustomEvent('change', { detail:{ value:text }, bubbles:true, composed:true }));
             host.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
-
             return true;
         }catch(e){
             console.warn('Error al escribir:', e);
@@ -291,15 +277,14 @@
         });
     }
 
-
     function showNoticeModal(message){
-  if (ST.modalOpen || ST.choosing) return Promise.resolve(); // 避免与其它弹窗打架
-  ST.modalOpen = true; ST.choosing = true;
+        if (ST.modalOpen || ST.choosing) return Promise.resolve(); // 避免与其它弹窗打架
+        ST.modalOpen = true; ST.choosing = true;
 
-  return new Promise(resolve => {
-    const root = document.createElement('div');
-    root.id = '__af_notice_root__';
-    root.innerHTML = `
+        return new Promise(resolve => {
+            const root = document.createElement('div');
+            root.id = '__af_notice_root__';
+            root.innerHTML = `
       <div class="af-backdrop"></div>
       <div class="af-modal" role="dialog" aria-modal="true" aria-label="Aviso">
         <div class="af-header">Aviso</div>
@@ -307,8 +292,8 @@
         <div class="af-actions"><button class="af-ok" type="button">Aceptar</button></div>
       </div>`;
 
-    const style = document.createElement('style');
-    style.textContent = `
+            const style = document.createElement('style');
+            style.textContent = `
       #__af_notice_root__{position:fixed;inset:0;z-index:999999;font-family:system-ui,Segoe UI,Arial,Helvetica,sans-serif}
       #__af_notice_root__ .af-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.35)}
       #__af_notice_root__ .af-modal{
@@ -322,17 +307,16 @@
       #__af_notice_root__ .af-ok{padding:8px 12px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}
       #__af_notice_root__ .af-ok:hover{background:#f7f7f7}
     `;
-    document.body.appendChild(style);
-    document.body.appendChild(root);
-
-    const cleanup=()=>{ root.remove(); style.remove(); ST.modalOpen=false; ST.choosing=false; resolve(); };
-    root.querySelector('.af-ok').addEventListener('click', cleanup);
-    root.querySelector('.af-backdrop').addEventListener('click', cleanup);
-    const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); } };
-    document.addEventListener('keydown', onKey, { once:true });
-  });
-}
-
+            document.body.appendChild(style);
+            document.body.appendChild(root);
+            
+            const cleanup=()=>{ root.remove(); style.remove(); ST.modalOpen=false; ST.choosing=false; resolve(); };
+            root.querySelector('.af-ok').addEventListener('click', cleanup);
+            root.querySelector('.af-backdrop').addEventListener('click', cleanup);
+            const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); } };
+            document.addEventListener('keydown', onKey, { once:true });
+        });
+    }
 
     async function resolveRuleValueUI(key, rule){
         // 数组：可能是字符串或对象的混合
@@ -358,14 +342,12 @@
                     return v; // {label, write:'ESTUDI - XXX', key:'ESTUDI_XXX'}
                 }
             }
-
             return (typeof picked === 'object') ? picked : { label:picked, write:picked, key:picked };
         }
         // 单值：可能是字符串或对象
         if (rule && typeof rule === 'object') return rule;
         return { label: rule ?? '', write: rule ?? '', key: rule ?? '' };
     }
-
 
     function buildNameCatalog(rules){
         const out = [];
@@ -391,8 +373,6 @@
     }
     const NAME_CATALOG = buildNameCatalog(NAME_RULES);
 
-
-
     // —— 将 NAME_RULES 中所有 write === 'PART' 的项，按 (tipo/subtipo) 聚合 ——
     function computePartGroups(rules){
         const groups = new Map(); // key: "tipo/subtipo" -> { tipo, subtipo, variants:[] }
@@ -416,9 +396,6 @@
         return [...groups.values()].filter(g => g.variants.length > 0);
     }
     const PART_GROUPS = computePartGroups(NAME_RULES);
-
-
-
 
     function ensurePickHosts(){
         if (!ST.tipoHost) ST.tipoHost = findHostByLabel(/^Tipo$/i, ['lightning-combobox']);
@@ -504,7 +481,6 @@
             //maxWidth:'min(500px, 90vw)' // ←max 520px screen max 90%
         });
 
-
         const label = document.createElement('div');
         label.innerHTML = 'Selección&nbsp;del<br>Pre-requisito:'; // ← “Selección del” inseparable
         Object.assign(label.style, {
@@ -521,7 +497,6 @@
         });
 
         //Object.assign(label.style, { fontSize:'12px', lineHeight:'1.2', whiteSpace:'nowrap', padding:'4px 2px' });
-
         const list = document.createElement('div');
         Object.assign(list.style, {
             display:'grid',
@@ -531,7 +506,6 @@
             overflow:'auto',
             width:'100%' // ← width
         });
-
 
         //用来创建浮窗的
         function mkBtn(entry){
@@ -568,7 +542,6 @@
             });
             return b;
         }
-
 
         // —— 单一“PART”按钮：直接弹 Acciones / Permisos —— //
         function mkUniversalPartBtn(){
@@ -614,7 +587,7 @@
                     ST.preNameOverride = { write: 'PART', key: choice.key };
                     ST.lockNameOnce = true;
                     ST.lastTextName = 'PART';
-                    ST.lastNameKey  = choice.key;
+                    ST.lastNameKey = choice.key;
 
                     // 设定对应组的 Tipo/Subtipo
                     ensurePickHosts();
@@ -634,15 +607,8 @@
                     destroyPicker();
                 }
             });
-
             return b;
         }
-
-
-
-
-
-
 
         // —— 单一“ESTUDI”按钮：点击后弹 7 个 ESTUDI 选项 —— //
         function mkUniversalEstudiBtn(){
@@ -668,9 +634,9 @@
 
                 // 关键：告诉 applyName 这一次不要弹窗，直接写 ESTUDI - XXX
                 ST.preNameOverride = { write: v.write, key: v.key };
-                ST.lockNameOnce    = true;
-                ST.lastTextName    = v.write;
-                ST.lastNameKey     = v.key;
+                ST.lockNameOnce = true;
+                ST.lastTextName = v.write;
+                ST.lastNameKey = v.key;
 
                 // 设定 03/07
                 ensurePickHosts();
@@ -686,11 +652,9 @@
                     applyComm();
                     destroyPicker();
                 }, 180);
-
             });
             return b;
         }
-
 
         // —— 构造候选清单：过滤空项 + 去掉单个 PART/ESTUDI 变体 + 注入“唯一 PART/ESTUDI” —— //
         let entries = NAME_CATALOG
@@ -700,7 +664,7 @@
                 String(e.write).trim().toUpperCase() !== 'ESTUDI');
 
         // 注入两个统一按钮
-        entries.push({ label: 'PART',   __isPartUniversal:   true });
+        entries.push({ label: 'PART', __isPartUniversal:   true });
         entries.push({ label: 'ESTUDI', __isEstudiUniversal: true });
 
         // 排序
@@ -708,18 +672,15 @@
 
         // 渲染
         for (const entry of entries) {
-            if (entry.__isPartUniversal)       list.appendChild(mkUniversalPartBtn());
+            if (entry.__isPartUniversal) list.appendChild(mkUniversalPartBtn());
             else if (entry.__isEstudiUniversal) list.appendChild(mkUniversalEstudiBtn());
-            else                                list.appendChild(mkBtn(entry));
+            else list.appendChild(mkBtn(entry));
         }
-
-
 
         wrap.appendChild(label);
         wrap.appendChild(list);
         document.body.appendChild(wrap);
         ST.pickerEl = wrap;
-
         positionPickerNear(ST.nameHost, wrap);
 
         // 只在真正点到外部时关闭
@@ -736,8 +697,6 @@
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('keydown', onKey, true);
     }
-
-
 
     /***  Lógica de aplicar reglas  ***/
     const applyName = (() => {
@@ -766,8 +725,7 @@
                     applyComm(); // 继续写通信文案（会用到第三键）
                     return; // 不再触发 resolveRuleValueUI → 不会弹窗
                 }
-
-
+                
                 if (rule === undefined) {
                     // 原有的清空逻辑
                     if (ST.lastTextName && ST.lastTextName !== '') {
@@ -785,8 +743,7 @@
                     }
                     return;
                 }
-
-
+                
                 if (ST.lockNameOnce) {
                     ST.lockNameOnce = false;
                     ST.lastKeyName = key;
@@ -803,7 +760,6 @@
                 }
                 ST.lastKeyName = key;
                 applyComm();
-
             }, 120);
         };
     })();
@@ -816,7 +772,6 @@
                 const key2 = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
                 const nombreKey = ST.lastNameKey || ST.lastTextName || '';
                 const key3 = `${key2}/${nombreKey}`;
-
                 const rule3 = COMM_RULES_3[key3];
                 const rule2 = COMM_RULES_2[key2];
                 const rule = (rule3 !== undefined) ? rule3 : rule2;
@@ -841,7 +796,6 @@
             }, 140);
         };
     })();
-
 
     /***  Listeners  ***/
     // 仅缓存 host，不再因 focus 自动弹出
@@ -881,7 +835,6 @@
         }
     }, true);
 
-
     // 标记：用户刚点击过 Subtipo 下拉（接下来 1.2s 内的选项点击算这次打开）
     document.addEventListener('pointerdown', (e) => {
         const path = e.composedPath?.() || [];
@@ -895,7 +848,6 @@
             ST._subtipoListTimer = setTimeout(() => { ST._subtipoListOpen = false; }, 2000); //延长点击时间
         }
     }, true);
-
 
     document.addEventListener('click', async (e) => {
         // 只有在“刚刚打开过 Subtipo 下拉”这个窗口期内才处理
@@ -932,12 +884,6 @@
         const rule = NAME_RULES[key];
         const isMulti = Array.isArray(rule);
 
-        // 仅在多选 & 之前已经选过 Nombre 的情况下，弹出 modal 重选
-        //if (!isMulti || !ST.lastTextName) {
-        //  ST._subtipoListOpen = false;
-        //  return;
-        //}
-
         if (!isMulti) {
             ST._subtipoListOpen = false;
             return;
@@ -965,17 +911,17 @@
             if (!v) return;
             if (ST.nameHost) writeHostValue(ST.nameHost, v.write);
             ST.lastTextName = v.write;
-            ST.lastNameKey  = v.key;
+            ST.lastNameKey = v.key;
             applyComm();
             return;
         }
 
         // 其他选项走原逻辑
         const writeText = (typeof choice === 'object') ? (choice.write ?? choice.label ?? '') : choice;
-        const nameKey   = (typeof choice === 'object') ? (choice.key   ?? writeText) : writeText;
+        const nameKey = (typeof choice === 'object') ? (choice.key ?? writeText) : writeText;
         if (ST.nameHost) writeHostValue(ST.nameHost, writeText);
         ST.lastTextName = writeText;
-        ST.lastNameKey  = nameKey;
+        ST.lastNameKey = nameKey;
         applyComm();
     }, true);
 
@@ -984,18 +930,15 @@
         ST.subtipo = null;
         ST.lastKeyName = null;
         ST.lastTextName = '';
-        ST.lastNameKey  = null;
-        ST.lastKeyComm  = null;
+        ST.lastNameKey = null;
+        ST.lastKeyComm = null;
         ST.lastTextComm = '';
         ST.noProcShownKey = null;
-
-
         // Hosts
         ensurePickHosts();
         ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
         ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text']);
-
-
+        
         // Limpiar Subtipo (combobox)
         if (ST.subtipoHost) {
             try {
@@ -1019,8 +962,6 @@
         destroyPicker();
     }
 
-
-
     function onPickChange(e){
         const path = e.composedPath?.() || [];
         const host = path.find(n => n && n.tagName === 'LIGHTNING-COMBOBOX');
@@ -1035,16 +976,13 @@
             clearTipoDependents(); // ← limpia Subtipo, Nombre y Comunicación
             return;
         }
-
+        
         if (label === 'Subtipo') {
             ST.subtipo = val;
             applyName();
             applyComm();
         }
     }
-
-
-
 
     function resetFormState() {
         ST.tipo = null;
@@ -1091,9 +1029,6 @@
             }
         }, CHECK_INTERVAL);
     })();
-
     if (document.readyState === 'complete' || document.readyState === 'interactive') install();
     else document.addEventListener('DOMContentLoaded', install, { once:true });
-
-
 })();
