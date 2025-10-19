@@ -82,6 +82,8 @@
         lastNameKey: null, //  COMM_RULES_3 
         preNameOverride: null, // remplazar applyName input（{write, key}）
         noProcShownKey: null, // memorizar `${tipo}/${subtipo}` combo
+        _lastHadRule: null,
+
 
     };
 
@@ -706,7 +708,9 @@
             clearTimeout(t);
             t = setTimeout(async () => {
                 const key = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
-                if (ST.lastKeyName === key && ST.lastTextName != null) return;
+                //if (ST.lastKeyName === key && ST.lastTextName != null) return;
+                if (ST.lastKeyName === key && ST.lastTextName != null && ST._lastHadRule === true) return;
+
                 const rule = NAME_RULES[key];
 
                 ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
@@ -732,6 +736,7 @@
                         if (writeHostValue(ST.nameHost, '')) ST.lastTextName = '';
                     }
                     ST.lastKeyName = key;
+                    ST._lastHadRule = false;
 
                     // Solo se solicita una vez la combinación actual
                     const k = key; // `${ST.tipo}/${ST.subtipo}`
@@ -757,6 +762,7 @@
                 if (writeHostValue(ST.nameHost, writeText)) {
                     ST.lastTextName = writeText;
                     ST.lastNameKey = picked.key ?? writeText;
+                    ST._lastHadRule = true;
                 }
                 ST.lastKeyName = key;
                 applyComm();
@@ -884,6 +890,19 @@
         const rule = NAME_RULES[key];
         const isMulti = Array.isArray(rule);
 
+
+
+
+        // 无规则 → 这里也直接给出“no procede”提示
+        if (rule === undefined) {
+            ST._subtipoListOpen = false;
+            await showNoticeModal('No procede el prerrequisito con el TIPO y SUBTIPO seleccionados.', 'Aviso');
+            return;
+        }
+
+
+
+
         if (!isMulti) {
             ST._subtipoListOpen = false;
             return;
@@ -934,6 +953,8 @@
         ST.lastKeyComm = null;
         ST.lastTextComm = '';
         ST.noProcShownKey = null;
+        ST._lastHadRule = null;
+        ST.noProcShownKey = null;
         // Hosts
         ensurePickHosts();
         ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
@@ -979,6 +1000,8 @@
         
         if (label === 'Subtipo') {
             ST.subtipo = val;
+            ST._lastHadRule = null;
+            ST.noProcShownKey = null;
             applyName();
             applyComm();
         }
@@ -998,6 +1021,8 @@
         ST.modalOpen = false;
         ST.choosing = false;
         ST.lockNameOnce = false;
+        ST._lastHadRule = null;
+        ST.noProcShownKey = null;
         destroyPicker();
         document.getElementById('__af_modal_root__')?.remove();
     }
