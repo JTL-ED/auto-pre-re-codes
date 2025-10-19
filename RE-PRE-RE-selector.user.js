@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           RE-Pre-requisito Selector
-// @version        2.0
+// @version        3.0
 // @namespace      https://accesosede.my.salesforce.com/
 // @description    En el modal "Reabrir el Pre-requisito": al enfocar el editor, muestra un popover de Nombres; al elegir, inserta el comentario y opcionalmente rellena el campo Nombre.
 // @match          http*://*.force.com/*
@@ -161,6 +161,33 @@
         }
     }
 
+    function clearModalText(modalRoot){
+
+        let ed = null;
+        for (const n of walkDeep(modalRoot || document)){
+            if (n instanceof Element && n.matches?.('.ql-editor')) { ed = n; break; }
+        }
+        if (ed){
+            ed.innerHTML = '<p><br></p>'; //
+            ed.dispatchEvent(new InputEvent('input', { bubbles:true }));
+            return true;
+        }
+
+        let ta = null;
+        for (const n of walkDeep(modalRoot || document)){
+            if (n instanceof Element && n.matches?.('textarea,[contenteditable="true"]')) { ta = n; break; }
+        }
+        if (ta){
+            if ('value' in ta) ta.value = '';
+            else ta.textContent = '';
+            ta.dispatchEvent(new Event('input', { bubbles:true }));
+            ta.dispatchEvent(new Event('change', { bubbles:true }));
+            return true;
+        }
+        return false;
+    }
+
+
     /* ========== Ventana flotante ========== */
     const POPOVER_ID = 'rp-nombre-popover';
     const POPOVER_STYLE_ID = 'rp-nombre-popover-style';
@@ -317,12 +344,19 @@
 
     function onPickNombre(nombre, modalRootHint){
         const root = getReabrirModalRoot() || modalRootHint || document;
-        writeNombreField(root, nombre); 
-        const variants = RP_RULES_N[nombre] || [];
-        const text = variants[0] || '';
-        if (text) writeToModal(root, text);
+        writeNombreField(root, nombre);
+        const variants = RP_RULES_N[nombre];
+        const text = Array.isArray(variants) ? (variants[0] || '') : '';
+
+        if (text && String(text).trim() !== '') {
+            writeToModal(root, text);
+        } else {
+            clearModalText(root);
+        }
+
         destroyPopover();
     }
+
 
     /* ========== detectar campo de texto ========== */
     const MODAL_H2_RE = /reabrir\s+el\s+pre-?requisito/i;
