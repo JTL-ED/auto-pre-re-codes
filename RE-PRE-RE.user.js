@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         RE-PRE-RE auto v1
+// @name         RE-Pre-requisito Auto
 // @namespace    sf-autofill-comm
-// @version      1.1
+// @version      1.1.0
 // @description  “Reabrir”, Tipo/Subtipo/Nombre del Pre-requisito，rellana “Comunicación al cliente”
 // @match        https://*.lightning.force.com/*
 // @match        https://*.my.salesforce.com/*
