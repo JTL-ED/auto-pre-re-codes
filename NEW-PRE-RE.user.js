@@ -894,10 +894,10 @@
         ST._subtipoListOpen = false;
 
         // Limpiar el viejo Nombre
-        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
-        if (ST.nameHost) writeHostValue(ST.nameHost, '');
-        ST.lastTextName = '';
-        ST.lockNameOnce = false;
+        //ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
+        //if (ST.nameHost) writeHostValue(ST.nameHost, '');
+        //ST.lastTextName = '';
+        //ST.lockNameOnce = false;
 
         // Aparece un modal de selección múltiple
         const choice = await showChoiceModal('Seleccione Pre-requisito', rule);
