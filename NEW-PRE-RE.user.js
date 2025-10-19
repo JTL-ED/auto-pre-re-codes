@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         NEW-Pre-re v3
+// @name         NEW-Pre-requisito
 // @namespace    https://your-space.example
-// @version      1.4.0
+// @version      1.3.0
 // @description  solucionar modal ventana
 // @match        https://*.lightning.force.com/*
 // @match        https://*.salesforce.com/*
