@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name           RE-PRE-RE
+// @name           RE-Pre-requisito Selector
+// @version        1.5.0
 // @namespace      https://accesosede.my.salesforce.com/
 // @description    Selector Tipo/Subtipo/Nombre con lectura automática del “Nombre del Pre-requisito”, búsqueda y plantillas. Tema claro/oscuro automático. Sin clics ni APIs.
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
-// @author         Jiatai + GPT
-// @version        1.5
+// @author         Jiatai + Carles + GPT
 // @grant          none
 // ==/UserScript==
 
@@ -633,3 +633,4 @@
   })();
 
 })();
+
