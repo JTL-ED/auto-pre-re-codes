@@ -79,13 +79,13 @@
         pickerEl: null,
         _insidePickerClick: false,
         lockNameOnce: false,
-        lastNameKey: null, // 用于 COMM_RULES_3 的第三键（优先 key，没有则回退到文本）
-        preNameOverride: null, // 一次性覆盖 applyName 的写入（{write, key}）
-        noProcShownKey: null, // 记录已提示过的 `${tipo}/${subtipo}` 组合
+        lastNameKey: null, //  COMM_RULES_3 
+        preNameOverride: null, // remplazar applyName input（{write, key}）
+        noProcShownKey: null, // memorizar `${tipo}/${subtipo}` combo
 
     };
 
-    // —— ESTUDI 的目标 Tipo/Subtipo + 变体 —— //
+    // —— ESTUDI - Tipo/Subtipo + variable —— //
     const ESTUDI_TARGET = { tipo: '03', subtipo: '07' };
     const ESTUDI_VARIANTS = [
         { label: 'ESTUDI - PER', write: 'ESTUDI - PER', key: 'ESTUDI_PER' },
@@ -97,16 +97,16 @@
         { label: 'ESTUDI - SO', write: 'ESTUDI - SO', key: 'ESTUDI_SO' },
     ];
 
-    // 统一的 ESTUDI 二级弹窗（按字母排序展示）
+    // ESTUDI modal 2n nivel（ORDEN ABC）
     async function pickEstudiVariant() {
         const sorted = [...ESTUDI_VARIANTS].sort((a,b) => (a.label||'').localeCompare(b.label||'', 'es', {sensitivity:'base'}));
         return await showChoiceModal('Seleccione Pre-requisito (ESTUDI)', sorted);
     }
 
-    /* ==== 安全版 walkDeep：有限深度 / 有限节点，防止拖死页面 ==== */
+    /* ==== walkDeep：profundidad limitada / Nodos limitados，Evitar que la página se quede bloqueada ==== */
     function* walkDeep(root, opts = {}) {
-        const MAX_NODES = opts.maxNodes ?? 2000; // 单次最多遍历多少节点（可按需调小/调大）
-        const MAX_DEPTH = opts.maxDepth ?? 4; // Shadow/子树最大深入层级
+        const MAX_NODES = opts.maxNodes ?? 2000; // El número máximo de nodos a atravesar a la vez (se puede ajustar según sea necesario)
+        const MAX_DEPTH = opts.maxDepth ?? 4; // Nivel máximo de profundidad de sombra/subárbol
         let seen = 0;
         const stack = [{ node: root, depth: 0 }];
 
@@ -114,13 +114,13 @@
             const { node, depth } = stack.pop();
             if (!node) continue;
             yield node;
-            if (++seen >= MAX_NODES) break; // 超上限立即停止
+            if (++seen >= MAX_NODES) break; // Detenerse inmediatamente si se excede el límite
             if (depth >= MAX_DEPTH) continue;
 
-            // 进入 shadowRoot
+            // Entrar shadowRoot
             if (node.shadowRoot) stack.push({ node: node.shadowRoot, depth: depth + 1 });
 
-            // 进入子元素
+            // Introducir elementos secundarios
             if (node.children && node.children.length) {
                 for (let i = node.children.length - 1; i >= 0; i--) {
                     stack.push({ node: node.children[i], depth: depth + 1 });
@@ -135,19 +135,19 @@
                 }
             }
 
-            // 同源 iframe
+            // iframe del mismo origen
             const tag = node.tagName;
             if (tag === 'IFRAME' || tag === 'FRAME') {
                 try {
                     if (node.contentDocument) {
                         stack.push({ node: node.contentDocument, depth: depth + 1 });
                     }
-                } catch (_) { /* 跨域忽略 */ }
+                } catch (_) {  } /* Ignorar entre dominios */
             }
         }
     }
 
-    /* ==== 轻量优先的 findHostByLabel：先快路径，再有限深度回退，并做缓存 ==== */
+    /* ==== Primero findHostByLabel ligero: primero la ruta rápida, luego una reserva de profundidad limitada y caché ==== */
     const __FH_CACHE__ = new Map(); // key: rx.toString() + '|' + tags.join(',')
 
     function findHostByLabel(rx, tags){
@@ -155,14 +155,14 @@
         const cached = __FH_CACHE__.get(key);
         if (cached && document.contains(cached)) return cached;
 
-        // 1) 快路径：只在顶层文档找（很便宜）
+        // 1) Ruta rápida: buscar solo en documentos de nivel superior
         const fast = document.querySelectorAll(tags.join(','));
         for (const el of fast) {
             const lab = (el.label || el.getAttribute?.('label') || '').trim();
             if (rx.test(lab)) { __FH_CACHE__.set(key, el); return el; }
         }
 
-        // 2) 回退：有限深度/节点的深度扫描（使用上面的 walkDeep 限流）
+        // 2) Respaldo: escaneo profundo/de profundidad limitada de nodos (use la limitación walkDeep mencionada anteriormente)
         for (const root of walkDeep(document, { maxNodes: 2000, maxDepth: 4 })) {
             if (!root.querySelectorAll) continue;
             for (const tag of tags) {
@@ -205,16 +205,16 @@
         if (ST.modalOpen || ST.choosing) return Promise.resolve(null);
         ST.modalOpen = true; ST.choosing = true;
 
-        // 可保留你已有的排序
+        //Puedes mantener tu clasificación actual
         choices = [...choices].sort((a,b) => {
             const n = x => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim();
             return n(a).localeCompare(n(b), 'es', {sensitivity:'base'});
         });
 
-        // —— 关键：按选项数量动态决定列数（最多3列） —— //
+        // —— Clave: Determina dinámicamente el número de columnas según el número de opciones (hasta 3 columnas) —— //
         const MAX_COLS = 3;
-        const BTN_MIN_W = 110; // 每个按钮的最小宽度（可调）
-        const GAP = 10; // 按钮间距（可调）
+        const BTN_MIN_W = 110; // Ancho mínimo de cada botón (ajustable)
+        const GAP = 10; //Espaciado entre botones (ajustable)
         const cols = Math.min(MAX_COLS, Math.max(1, choices.length));
 
         return new Promise(resolve => {
@@ -241,7 +241,7 @@
         position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
         background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);
         padding:16px;display:flex;flex-direction:column;gap:12px;
-        /* 根据列数自适应最大宽度：按钮宽度 * 列数 + 间距 + 内边距 */
+        /* Adaptar al ancho máximo en función del número de columnas: ancho del botón * número de columnas + espaciado + relleno */
         width:fit-content;max-width:90vw;min-width:360px;
       }
       #__af_modal_root__ .af-header{font-weight:600;font-size:16px}
@@ -254,7 +254,7 @@
         min-height:40px; padding:10px 12px; border-radius:10px;
         border:1px solid #e3e3e3; background:#f6f7f9; cursor:pointer;
         width:100%;
-        /* 多行自适应且居中 */
+        /* Varias líneas son adaptativas y centradas */
         display:flex; align-items:center; justify-content:center; text-align:center;
         white-space:normal; word-break:break-word; overflow:visible;
       }
@@ -278,7 +278,7 @@
     }
 
     function showNoticeModal(message){
-        if (ST.modalOpen || ST.choosing) return Promise.resolve(); // 避免与其它弹窗打架
+        if (ST.modalOpen || ST.choosing) return Promise.resolve(); // Evita conflictos con otras ventanas emergentes
         ST.modalOpen = true; ST.choosing = true;
 
         return new Promise(resolve => {
@@ -319,21 +319,21 @@
     }
 
     async function resolveRuleValueUI(key, rule){
-        // 数组：可能是字符串或对象的混合
+        // Matriz: puede ser una mezcla de cadenas u objetos
         if (Array.isArray(rule)) {
             if (!MODAL_WHITELIST.has(key)) {
                 const first = rule[0];
                 return (typeof first === 'object') ? first : { label:first, write:first, key:first };
             }
             if (ST.modalOpen || ST.choosing) return null;
-            // —— 按字母序（西语，忽略大小写和重音）排序 —— //
+            // —— Ordenar alfabéticamente (ignorando mayúsculas y minúsculas y acentos) —— //
             const toLabel = (x) => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim();
             const sortedRule = [...rule].sort((a, b) => toLabel(a).localeCompare(toLabel(b), 'es', { sensitivity: 'base' }));
 
             const picked = await showChoiceModal(`Seleccione Pre-requisito`, sortedRule);
-            if (!picked) return null; // ← 先判空
+            if (!picked) return null; // Predicción
 
-            // 如果是 03/07 且用户选了 ESTUDI，则转入 ESTUDI 二级弹窗
+            // Si es 03/07 y el usuario selecciona ESTUDI, entonces pasa a la ventana emergente secundaria ESTUDI
             if (key === '03/07') {
                 const getLabel = (x) => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim().toUpperCase();
                 if (getLabel(picked) === 'ESTUDI') {
@@ -344,7 +344,7 @@
             }
             return (typeof picked === 'object') ? picked : { label:picked, write:picked, key:picked };
         }
-        // 单值：可能是字符串或对象
+        // Valor único: puede ser una cadena o un objeto
         if (rule && typeof rule === 'object') return rule;
         return { label: rule ?? '', write: rule ?? '', key: rule ?? '' };
     }
@@ -367,13 +367,13 @@
             };
             Array.isArray(val) ? val.forEach(push) : push(val);
         }
-        // 排序可选
+        // Ordenación opcional
         out.sort((a,b)=> a.label.localeCompare(b.label,'es'));
         return out;
     }
     const NAME_CATALOG = buildNameCatalog(NAME_RULES);
 
-    // —— 将 NAME_RULES 中所有 write === 'PART' 的项，按 (tipo/subtipo) 聚合 ——
+    // -- Agrega todos los elementos en NAME_RULES donde escribe === 'PART' por (tipo/subtipo) --
     function computePartGroups(rules){
         const groups = new Map(); // key: "tipo/subtipo" -> { tipo, subtipo, variants:[] }
         for (const key of Object.keys(rules)) {
@@ -384,7 +384,7 @@
                 const label = (typeof x==='object') ? (x.label ?? x.write ?? '') : x;
                 const write = (typeof x==='object') ? (x.write ?? x.label ?? '') : x;
                 const k = (typeof x==='object') ? (x.key ?? write) : write;
-                // 只关心 write === 'PART' 的条目（比如 PART-Acciones / PART-Permiso）
+                // Solo importan las entradas donde se escribe === 'PART' (por ejemplo, PART-Acciones / PART-Permiso)
                 if (String(write).trim().toUpperCase() !== 'PART') return;
                 const gk = `${tipo}/${subtipo}`;
                 if (!groups.has(gk)) groups.set(gk, { tipo, subtipo, variants: [] });
@@ -392,7 +392,7 @@
             };
             Array.isArray(val) ? val.forEach(push) : push(val);
         }
-        // 只保留有 1+ 个 PART 变体的组
+        // Mantener únicamente grupos con variantes de 1 o más PARTES
         return [...groups.values()].filter(g => g.variants.length > 0);
     }
     const PART_GROUPS = computePartGroups(NAME_RULES);
@@ -507,7 +507,7 @@
             width:'100%' // ← width
         });
 
-        //用来创建浮窗的
+        //Se utiliza para crear ventanas flotantes.
         function mkBtn(entry){
             const b = document.createElement('button');
             b.type = 'button';
@@ -534,7 +534,7 @@
                         ST.lockNameOnce = true;
                         writeHostValue(ST.nameHost, entry.write);
                         ST.lastTextName = entry.write;
-                        ST.lastNameKey = entry.key; // 第三键给 COMM_RULES_3
+                        ST.lastNameKey = entry.key; // COMM_RULES_3
                     }
                     applyComm();
                     destroyPicker();
@@ -543,7 +543,7 @@
             return b;
         }
 
-        // —— 单一“PART”按钮：直接弹 Acciones / Permisos —— //
+        // —— Botón único "PART": reproduce directamente Acciones / Permisos —— //
         function mkUniversalPartBtn(){
             const b = document.createElement('button');
             b.type = 'button';
@@ -562,7 +562,7 @@
                 ST._insidePickerClick = true; queueMicrotask(()=>{ ST._insidePickerClick = false; });
 
                 try {
-                    // 收集 PART 变体（来自所有组），并覆盖显示文案
+                    // Recopilar variantes de PART (de todos los grupos) y anular el texto mostrado
                     const labelMap = {
                         'PART_Acciones': 'PART - Pendiente acciones cliente',
                         'PART_Permiso':  'PART - Pendiente de permisos',
@@ -579,23 +579,23 @@
                     }
                     if (!variants.length) { destroyPicker(); return; }
 
-                    // 只展示 PART 的变体
+                    // Mostrar solo variantes de PART
                     const choice = await showChoiceModal('Seleccione Pre-requisito (PART)', variants);
                     if (!choice) { destroyPicker(); return; }
 
-                    // 告诉 applyName：本次不要再弹窗
+                    // Dígale a applyName: No vuelva a mostrar la ventana emergente esta vez
                     ST.preNameOverride = { write: 'PART', key: choice.key };
                     ST.lockNameOnce = true;
                     ST.lastTextName = 'PART';
                     ST.lastNameKey = choice.key;
 
-                    // 设定对应组的 Tipo/Subtipo
+                    // Establecer Tipo/Subtipo del grupo correspondiente
                     ensurePickHosts();
                     await setComboValue(ST.tipoHost, choice._target.tipo);
                     setTimeout(async () => {
                         await setComboValue(ST.subtipoHost, choice._target.subtipo);
 
-                        // 写入 Nombre='PART'
+                        // Introducir Nombre='PARTE'
                         ST.nameHost = findHostByLabel(NAME_LABEL_RX, ['lightning-input']) || ST.nameHost;
                         if (ST.nameHost) writeHostValue(ST.nameHost, 'PART');
 
@@ -610,7 +610,7 @@
             return b;
         }
 
-        // —— 单一“ESTUDI”按钮：点击后弹 7 个 ESTUDI 选项 —— //
+        // —— Botón único "ESTUDI": haga clic para que aparezcan 7 opciones de ESTUDI —— //
         function mkUniversalEstudiBtn(){
             const b = document.createElement('button');
             b.type = 'button';
@@ -627,28 +627,28 @@
                 ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
                 ST._insidePickerClick = true; queueMicrotask(()=>{ ST._insidePickerClick = false; });
 
-                // 先弹出 ESTUDI 变体
-                // …… pickEstudiVariant() 之后：
+                // Primero saca la variante ESTUDI
+                // ...después de pickEstudiVariant():
                 const v = await pickEstudiVariant();
                 if (!v) { destroyPicker(); return; }
 
-                // 关键：告诉 applyName 这一次不要弹窗，直接写 ESTUDI - XXX
+                // Clave: Indica a applyName que no muestre una ventana emergente esta vez y que solo escriba ESTUDI - XXX
                 ST.preNameOverride = { write: v.write, key: v.key };
                 ST.lockNameOnce = true;
                 ST.lastTextName = v.write;
                 ST.lastNameKey = v.key;
 
-                // 设定 03/07
+                // Ajustes 03/07
                 ensurePickHosts();
                 await setComboValue(ST.tipoHost, ESTUDI_TARGET.tipo);
                 setTimeout(async () => {
                     await setComboValue(ST.subtipoHost, ESTUDI_TARGET.subtipo);
 
-                    // 写入“Nombre del Pre-requisito” = ESTUDI - XXX（冗余写一次更稳）
+                    // Escribe "Nombre del Pre-requisito" = ESTUDI - XXX (escribir una vez es más estable)
                     ST.nameHost = findHostByLabel(NAME_LABEL_RX, ['lightning-input']) || ST.nameHost;
                     if (ST.nameHost) writeHostValue(ST.nameHost, v.write);
 
-                    // 不写 comunicación：applyComm 命不中会保持空
+                    // No escriba comunicación: applyComm quedará vacío si falla
                     applyComm();
                     destroyPicker();
                 }, 180);
@@ -656,21 +656,21 @@
             return b;
         }
 
-        // —— 构造候选清单：过滤空项 + 去掉单个 PART/ESTUDI 变体 + 注入“唯一 PART/ESTUDI” —— //
+        //——Construir lista de candidatos: filtrar elementos vacíos + eliminar variantes individuales de PART/ESTUDI + inyectar "PART/ESTUDI único"—— //
         let entries = NAME_CATALOG
         .filter(e => e && e.label && e.label.trim() !== '')
         .filter(e => String(e.write).trim().toUpperCase() !== 'PART')
         .filter(e => String(e.label).trim().toUpperCase() !== 'ESTUDI' &&
                 String(e.write).trim().toUpperCase() !== 'ESTUDI');
 
-        // 注入两个统一按钮
+        // Inyectar dos botones unificados
         entries.push({ label: 'PART', __isPartUniversal:   true });
         entries.push({ label: 'ESTUDI', __isEstudiUniversal: true });
 
-        // 排序
+        // Clasificar
         entries.sort((a, b) => a.label.localeCompare(b.label, 'es'));
 
-        // 渲染
+        // Prestar
         for (const entry of entries) {
             if (entry.__isPartUniversal) list.appendChild(mkUniversalPartBtn());
             else if (entry.__isEstudiUniversal) list.appendChild(mkUniversalEstudiBtn());
@@ -683,7 +683,7 @@
         ST.pickerEl = wrap;
         positionPickerNear(ST.nameHost, wrap);
 
-        // 只在真正点到外部时关闭
+        // Cerrar solo cuando se hace clic en el punto externo
         const onDocDown = (e) => {
             if (ST._insidePickerClick) return;
             const path = e.composedPath?.() || [];
@@ -711,10 +711,10 @@
 
                 ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
 
-                // —— 如果有一次性预选结果，直接写入并跳过弹窗 —— //
+                // —— Si hay un resultado de preselección único, escríbalo directamente y omita la ventana emergente —— //
                 if (ST.preNameOverride) {
                     const picked = ST.preNameOverride; // { write, key }
-                    ST.preNameOverride = null; // 只用一次
+                    ST.preNameOverride = null;
                     ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
                     if (ST.nameHost) {
                         writeHostValue(ST.nameHost, picked.write || '');
@@ -722,18 +722,18 @@
                         ST.lastNameKey = picked.key || (picked.write || '');
                     }
                     ST.lastKeyName = key; // key = `${ST.tipo}/${ST.subtipo}`
-                    applyComm(); // 继续写通信文案（会用到第三键）
-                    return; // 不再触发 resolveRuleValueUI → 不会弹窗
+                    applyComm(); 
+                    return; // resolveRuleValueUI ya no se activa → no aparecerá ninguna ventana emergente
                 }
                 
                 if (rule === undefined) {
-                    // 原有的清空逻辑
+                    // Lógica de limpieza
                     if (ST.lastTextName && ST.lastTextName !== '') {
                         if (writeHostValue(ST.nameHost, '')) ST.lastTextName = '';
                     }
                     ST.lastKeyName = key;
 
-                    // 新增：只对当前组合提示一次
+                    // Solo se solicita una vez la combinación actual
                     const k = key; // `${ST.tipo}/${ST.subtipo}`
                     if (ST.tipo && ST.subtipo && ST.noProcShownKey !== k) {
                         ST.noProcShownKey = k;
@@ -798,7 +798,7 @@
     })();
 
     /***  Listeners  ***/
-    // 仅缓存 host，不再因 focus 自动弹出
+    // Solo almacena en caché el host, ya no aparece automáticamente debido al foco
     function onFocusIn(e){
         const path = e.composedPath?.() || [];
         const tag = n => n && n.tagName;
@@ -820,10 +820,10 @@
         }
     }
 
-    // 只在点击“Nombre del Pre-requisito”时才打开浮动列表
+    //Abre la lista flotante solo cuando se hace clic en "Nombre del Pre-requisito"
     document.addEventListener('click', (e) => {
         const path = e.composedPath?.() || [];
-        // 如果点的是浮动面板自身，忽略
+        // Si se hace clic en el panel flotante, ignorar
         if (path.some(n => n && n.id === '__af_name_picker_ephemeral__')) return;
 
         const hit = path.find(n => n && n.tagName === 'LIGHTNING-INPUT');
@@ -835,7 +835,7 @@
         }
     }, true);
 
-    // 标记：用户刚点击过 Subtipo 下拉（接下来 1.2s 内的选项点击算这次打开）
+    // Mark: El usuario acaba de hacer clic en el menú desplegable Subtipo (hacer clic en las opciones dentro de los próximos 1,2 segundos contará como esta apertura)
     document.addEventListener('pointerdown', (e) => {
         const path = e.composedPath?.() || [];
         const combo = path.find(n => n && n.tagName === 'LIGHTNING-COMBOBOX');
@@ -843,19 +843,19 @@
         const label = combo.label || combo.getAttribute?.('label') || '';
         if (label === 'Subtipo') {
             ST._subtipoListOpen = true;
-            // 超时兜底，避免 flag 一直挂着
+            // Tiempo de espera para evitar que la bandera quede colgada
             clearTimeout(ST._subtipoListTimer);
             ST._subtipoListTimer = setTimeout(() => { ST._subtipoListOpen = false; }, 2000); //延长点击时间
         }
     }, true);
 
     document.addEventListener('click', async (e) => {
-        // 只有在“刚刚打开过 Subtipo 下拉”这个窗口期内才处理
+        // Solo proceso dentro del periodo de ventana de "Se acaba de abrir el menú desplegable de subtipo"
         if (!ST._subtipoListOpen) return;
 
         const path = e.composedPath?.() || [];
 
-        // 在 Salesforce 的 overlay 里找被点中的“选项节点”
+        // Encuentre el "nodo de opción" en el que hizo clic en la superposición de Salesforce
         let opt = null;
         for (const n of path) {
             if (!n || !n.getAttribute) continue;
@@ -867,19 +867,19 @@
         }
         if (!opt) return;
 
-        // 拿到这次点击的选项 value（按 data-value 优先，其次文本）
+        // Obtener el valor de la opción en la que se hizo clic esta vez (primero el valor de los datos, luego el texto)
         const picked = (opt.getAttribute('data-value') || opt.dataset?.value || (opt.textContent || '')).trim();
         if (!picked) return;
 
-        // 当前已选中的 Subtipo
+        // Subtipo actualmente seleccionado
         const currentSub = (ST.subtipo || '').trim();
-        // 只在 “点了同一个 Subtipo” 的时候处理；否则让默认行为走 change
+        // Procesar solo cuando se "hace clic en el mismo subtipo"; de lo contrario, dejar el comportamiento predeterminado
         if (picked.toLowerCase() !== currentSub.toLowerCase()) {
-            ST._subtipoListOpen = false; // 选了别的值，交给 onPickChange 走正常逻辑
+            ST._subtipoListOpen = false; // Si se selecciona otro valor, onPickChange seguirá la lógica normal.
             return;
         }
 
-        // 判断这个 Tipo/Subtipo 是否是“多选规则”（01/01 或 01/07）
+        // Determinar si este Tipo/Subtipo es una "regla de selección múltiple" (01/01 o 01/07)
         const key = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
         const rule = NAME_RULES[key];
         const isMulti = Array.isArray(rule);
@@ -889,21 +889,21 @@
             return;
         }
 
-        // 到这里：用户在同一个 Subtipo 上“再选择一次” → 我们拦截并弹窗
+        // El usuario "selecciona nuevamente" en el mismo Subtipo → Interceptamos y abrimos una ventana
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         ST._subtipoListOpen = false;
 
-        // 清理旧的 Nombre（可选）
+        // Limpiar el viejo Nombre
         ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
         if (ST.nameHost) writeHostValue(ST.nameHost, '');
         ST.lastTextName = '';
         ST.lockNameOnce = false;
 
-        // 弹出多选 modal
+        // Aparece un modal de selección múltiple
         const choice = await showChoiceModal('Seleccione Pre-requisito', rule);
         if (choice == null) return;
 
-        // 仅当当前键为 03/07 且用户选了 ESTUDI → 进入二级弹窗
+        //Solo cuando la clave actual es 03/07 y el usuario selecciona ESTUDI → ingresa a la ventana emergente secundaria
         const keyNow = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
         const getLabel = x => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim().toUpperCase();
         if (keyNow === '03/07' && getLabel(choice) === 'ESTUDI') {
@@ -916,7 +916,7 @@
             return;
         }
 
-        // 其他选项走原逻辑
+        // Otras opciones siguen la lógica original
         const writeText = (typeof choice === 'object') ? (choice.write ?? choice.label ?? '') : choice;
         const nameKey = (typeof choice === 'object') ? (choice.key ?? writeText) : writeText;
         if (ST.nameHost) writeHostValue(ST.nameHost, writeText);
@@ -1007,7 +1007,7 @@
         document.addEventListener('change', onPickChange, true);
     }
 
-    // 修正 includes 判断
+    // Corregir includes
     (function monitorNewPrereqPage(){
         let lastUrl = location.href;
         const CHECK_INTERVAL = 800;
