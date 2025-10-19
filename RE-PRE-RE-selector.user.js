@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name           RE-PRE-RE-selector v2
+// @name           RE-Pre-requisito Selector
+// @version        2.0
 // @namespace      https://accesosede.my.salesforce.com/
 // @description    En el modal "Reabrir el Pre-requisito": al enfocar el editor, muestra un popover de Nombres; al elegir, inserta el comentario y opcionalmente rellena el campo Nombre.
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Jiatai + Carles + GPT
-// @version        2.0
 // @grant          none
 // ==/UserScript==
 
@@ -398,3 +398,4 @@
     })();
 
 })();
+
