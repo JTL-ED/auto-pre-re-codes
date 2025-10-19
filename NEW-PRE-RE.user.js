@@ -744,6 +744,7 @@
                         ST.noProcShownKey = k;
                         const msg = `No procede el prerrequisito con el TIPO y SUBTIPO seleccionados.`;
                         //const msg = `No procede el prerrequisito con el TIPO "${ST.tipo}" y SUBTIPO "${ST.subtipo}" seleccionados.`;
+                        //await resetSubtipoOnly();
                         await showNoticeModal(msg);
                     }
                     return;
@@ -893,10 +894,11 @@
 
 
 
-        // 无规则 → 这里也直接给出“no procede”提示
+        // No rules, aviso no procede
         if (rule === undefined) {
             ST._subtipoListOpen = false;
             await showNoticeModal('No procede el prerrequisito con el TIPO y SUBTIPO seleccionados.', 'Aviso');
+            //await resetSubtipoOnly();
             return;
         }
 
@@ -982,6 +984,25 @@
         ST.choosing = false;
         destroyPicker();
     }
+
+
+//    async function resetSubtipoOnly() {
+//  ensurePickHosts();
+
+//  ST.subtipo = null;
+//  ST._lastHadRule = null;
+//  ST.noProcShownKey = null;
+
+//  if (ST.subtipoHost) {
+//    try {
+//      ST.subtipoHost.value = '';
+//      ST.subtipoHost.dispatchEvent(new CustomEvent('change', { detail:{ value:'' }, bubbles:true, composed:true }));
+//      ST.subtipoHost.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
+//    } catch (_) {}
+//  }
+//}
+
+
 
     function onPickChange(e){
         const path = e.composedPath?.() || [];
