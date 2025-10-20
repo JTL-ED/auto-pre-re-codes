@@ -79,7 +79,7 @@
         pickerEl: null,
         _insidePickerClick: false,
         lockNameOnce: false,
-        lastNameKey: null, //  COMM_RULES_3 
+        lastNameKey: null, //  COMM_RULES_3
         preNameOverride: null, // remplazar applyName input（{write, key}）
         noProcShownKey: null, // memorizar `${tipo}/${subtipo}` combo
         _lastHadRule: null,
@@ -102,6 +102,7 @@
     // ESTUDI modal 2n nivel（ORDEN ABC）
     async function pickEstudiVariant() {
         const sorted = [...ESTUDI_VARIANTS].sort((a,b) => (a.label||'').localeCompare(b.label||'', 'es', {sensitivity:'base'}));
+        await clearTipoDependents(true);
         return await showChoiceModal('Seleccione Pre-requisito (ESTUDI)', sorted);
     }
 
@@ -130,12 +131,12 @@
             }
 
             // Document / ShadowRoot 的 children
-            if (node instanceof Document || node instanceof ShadowRoot) {
-                const kids = node.children || node.childNodes || [];
-                for (let i = kids.length - 1; i >= 0; i--) {
-                    stack.push({ node: kids[i], depth: depth + 1 });
-                }
-            }
+            //if (node instanceof Document || node instanceof ShadowRoot) {
+            //    const kids = node.children || node.childNodes || [];
+            //    for (let i = kids.length - 1; i >= 0; i--) {
+            //        stack.push({ node: kids[i], depth: depth + 1 });
+            //    }
+            // }
 
             // iframe del mismo origen
             const tag = node.tagName;
@@ -144,7 +145,7 @@
                     if (node.contentDocument) {
                         stack.push({ node: node.contentDocument, depth: depth + 1 });
                     }
-                } catch (_) {  } /* Ignorar entre dominios */
+                } catch (_) { } /* Ignorar entre dominios */
             }
         }
     }
@@ -200,6 +201,24 @@
         }
     }
 
+
+    function clearNameAndCommOnly(){
+        // 确保拿到 host
+        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
+        ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text']);
+
+        // 清空两个字段
+        if (ST.nameHost) writeHostValue(ST.nameHost, '');
+        if (ST.commHost) writeHostValue(ST.commHost, '');
+
+        // 清状态，避免 applyComm 用旧缓存又写回去
+        ST.lastTextName = '';
+        ST.lastNameKey = null;
+        ST.lastKeyName = null;
+
+        ST.lastTextComm = '';
+        ST.lastKeyComm = null;
+    }
 
 
 
@@ -311,7 +330,7 @@
     `;
             document.body.appendChild(style);
             document.body.appendChild(root);
-            
+
             const cleanup=()=>{ root.remove(); style.remove(); ST.modalOpen=false; ST.choosing=false; resolve(); };
             root.querySelector('.af-ok').addEventListener('click', cleanup);
             root.querySelector('.af-backdrop').addEventListener('click', cleanup);
@@ -331,6 +350,7 @@
             // —— Ordenar alfabéticamente (ignorando mayúsculas y minúsculas y acentos) —— //
             const toLabel = (x) => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim();
             const sortedRule = [...rule].sort((a, b) => toLabel(a).localeCompare(toLabel(b), 'es', { sensitivity: 'base' }));
+            await clearTipoDependents(true);
 
             const picked = await showChoiceModal(`Seleccione Pre-requisito`, sortedRule);
             if (!picked) return null; // Predicción
@@ -569,6 +589,7 @@
                         'PART_Acciones': 'PART - Pendiente acciones cliente',
                         'PART_Permiso':  'PART - Pendiente de permisos',
                     };
+
                     const variants = [];
                     for (const g of (PART_GROUPS || [])) {
                         for (const v of (g.variants || [])) {
@@ -582,6 +603,8 @@
                     if (!variants.length) { destroyPicker(); return; }
 
                     // Mostrar solo variantes de PART
+                    if (ST.nameHost) writeHostValue(ST.nameHost, '');
+                    await clearTipoDependents(true);
                     const choice = await showChoiceModal('Seleccione Pre-requisito (PART)', variants);
                     if (!choice) { destroyPicker(); return; }
 
@@ -702,6 +725,7 @@
 
     /***  Lógica de aplicar reglas  ***/
     const applyName = (() => {
+        if (ST.modalOpen || ST.choosing) return;
         let t=null;
         return async () => {
             if (!ST.subtipo) return;
@@ -726,10 +750,10 @@
                         ST.lastNameKey = picked.key || (picked.write || '');
                     }
                     ST.lastKeyName = key; // key = `${ST.tipo}/${ST.subtipo}`
-                    applyComm(); 
+                    applyComm();
                     return; // resolveRuleValueUI ya no se activa → no aparecerá ninguna ventana emergente
                 }
-                
+
                 if (rule === undefined) {
                     // Lógica de limpieza
                     if (ST.lastTextName && ST.lastTextName !== '') {
@@ -744,12 +768,14 @@
                         ST.noProcShownKey = k;
                         const msg = `No procede el prerrequisito con el TIPO y SUBTIPO seleccionados.`;
                         //const msg = `No procede el prerrequisito con el TIPO "${ST.tipo}" y SUBTIPO "${ST.subtipo}" seleccionados.`;
-                        //await resetSubtipoOnly();
+                        await resetSubtipoOnly();
+                        await clearTipoDependents(true);
+
                         await showNoticeModal(msg);
                     }
                     return;
                 }
-                
+
                 if (ST.lockNameOnce) {
                     ST.lockNameOnce = false;
                     ST.lastKeyName = key;
@@ -772,6 +798,7 @@
     })();
 
     const applyComm = (() => {
+        if (ST.modalOpen || ST.choosing) return;
         let t=null;
         return async () => {
             clearTimeout(t);
@@ -897,13 +924,11 @@
         // No rules, aviso no procede
         if (rule === undefined) {
             ST._subtipoListOpen = false;
+            await clearTipoDependents(true);
             await showNoticeModal('No procede el prerrequisito con el TIPO y SUBTIPO seleccionados.', 'Aviso');
-            //await resetSubtipoOnly();
+            await resetSubtipoOnly();
             return;
         }
-
-
-
 
         if (!isMulti) {
             ST._subtipoListOpen = false;
@@ -912,14 +937,9 @@
 
         // El usuario "selecciona nuevamente" en el mismo Subtipo → Interceptamos y abrimos una ventana
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+
         ST._subtipoListOpen = false;
-
-        // Limpiar el viejo Nombre
-        //ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
-        //if (ST.nameHost) writeHostValue(ST.nameHost, '');
-        //ST.lastTextName = '';
-        //ST.lockNameOnce = false;
-
+        await clearTipoDependents(true);
         // Aparece un modal de selección múltiple
         const choice = await showChoiceModal('Seleccione Pre-requisito', rule);
         if (choice == null) return;
@@ -946,9 +966,12 @@
         applyComm();
     }, true);
 
-    async function clearTipoDependents() {
-        // Estado
-        ST.subtipo = null;
+    // 统一的清理函数：当 skipSubtipo=true 时，只清理 Nombre/Comunicación 与相关状态；不改 Subtipo/Tipo
+    async function clearTipoDependents(skipSubtipo = false) {
+        // 状态
+        if (!skipSubtipo) {
+            ST.subtipo = null;
+        }
         ST.lastKeyName = null;
         ST.lastTextName = '';
         ST.lastNameKey = null;
@@ -956,29 +979,26 @@
         ST.lastTextComm = '';
         ST.noProcShownKey = null;
         ST._lastHadRule = null;
-        ST.noProcShownKey = null;
+
         // Hosts
         ensurePickHosts();
-        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
-        ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text']);
-        
-        // Limpiar Subtipo (combobox)
-        if (ST.subtipoHost) {
+        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input','lightning-input-field']);
+        ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text','lightning-input-field']);
+
+        // 只在不跳过 subtipo 时才清空 Subtipo（保持原行为）
+        if (!skipSubtipo && ST.subtipoHost) {
             try {
-                // Intenta la vía estándar
                 ST.subtipoHost.value = '';
                 ST.subtipoHost.dispatchEvent(new CustomEvent('change', { detail:{ value:'' }, bubbles:true, composed:true }));
                 ST.subtipoHost.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
             } catch(_) {}
         }
 
-        // Limpiar Nombre del Pre-requisito
+        // 清空 Nombre & Comunicación —— 这是你想复用的核心
         if (ST.nameHost) writeHostValue(ST.nameHost, '');
-
-        // Limpiar Comunicación al cliente
         if (ST.commHost) writeHostValue(ST.commHost, '');
 
-        // Cerrar UI auxiliar
+        // 关闭辅助 UI
         ST.lockNameOnce = false;
         ST.modalOpen = false;
         ST.choosing = false;
@@ -986,21 +1006,22 @@
     }
 
 
-//    async function resetSubtipoOnly() {
-//  ensurePickHosts();
 
-//  ST.subtipo = null;
-//  ST._lastHadRule = null;
-//  ST.noProcShownKey = null;
+    async function resetSubtipoOnly() {
+        ensurePickHosts();
 
-//  if (ST.subtipoHost) {
-//    try {
-//      ST.subtipoHost.value = '';
-//      ST.subtipoHost.dispatchEvent(new CustomEvent('change', { detail:{ value:'' }, bubbles:true, composed:true }));
-//      ST.subtipoHost.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
-//    } catch (_) {}
-//  }
-//}
+        ST.subtipo = null;
+        ST._lastHadRule = null;
+        ST.noProcShownKey = null;
+
+        if (ST.subtipoHost) {
+            try {
+                ST.subtipoHost.value = '';
+                ST.subtipoHost.dispatchEvent(new CustomEvent('change', { detail:{ value:'' }, bubbles:true, composed:true }));
+                ST.subtipoHost.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
+            } catch (_) {}
+        }
+    }
 
 
 
@@ -1018,7 +1039,7 @@
             clearTipoDependents(); // ← limpia Subtipo, Nombre y Comunicación
             return;
         }
-        
+
         if (label === 'Subtipo') {
             ST.subtipo = val;
             ST._lastHadRule = null;
