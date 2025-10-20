@@ -272,8 +272,10 @@
             root.querySelectorAll('.af-option').forEach((btn, i)=>{
                 btn.addEventListener('click',()=>{ const choice = choices[i]; cleanup(); resolve(choice ?? null); });
             });
-            root.querySelector('.af-cancel').addEventListener('click',()=>{ cleanup(); resolve(null); });
-            root.querySelector('.af-backdrop').addEventListener('click', ()=>{ cleanup(); resolve(null); });
+            root.querySelector('.af-cancel').addEventListener('click',()=>{ cleanup(); { __cancelled: true}; });
+            root.querySelector('.af-backdrop').addEventListener('click', ()=>{ cleanup(); { __cancelled: true}; });
+            //root.querySelector('.af-cancel').addEventListener('click',()=>{ cleanup(); resolve(null); });
+            //root.querySelector('.af-backdrop').addEventListener('click', ()=>{ cleanup(); resolve(null); });
             const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); resolve(null); } };
             document.addEventListener('keydown', onKey, { once:true });
         });
@@ -758,7 +760,8 @@
                 }
 
                 const picked = await resolveRuleValueUI(key, rule);
-                if (picked === null) return;
+                if (picked === null || picked.__cancelled) return;  // No resea texto Comunicación
+                //if (picked === null) return;
                 const writeText = picked.write ?? picked.label ?? '';
                 if (writeHostValue(ST.nameHost, writeText)) {
                     ST.lastTextName = writeText;
@@ -922,7 +925,8 @@
 
         // Aparece un modal de selección múltiple
         const choice = await showChoiceModal('Seleccione Pre-requisito', rule);
-        if (choice == null) return;
+        if (choice == null || choice.__cancelled) return; // No resea texto comunicacion
+        //if (choice == null) return;
 
         //Solo cuando la clave actual es 03/07 y el usuario selecciona ESTUDI → ingresa a la ventana emergente secundaria
         const keyNow = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
