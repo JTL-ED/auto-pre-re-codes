@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RE-Pre-requisito Auto
 // @namespace    sf-autofill-comm
-// @version      1.1.0
+// @version      1.2.0
 // @description  “Reabrir”, Tipo/Subtipo/Nombre del Pre-requisito，rellana “Comunicación al cliente”
 // @match        https://*.lightning.force.com/*
 // @match        https://*.my.salesforce.com/*
@@ -194,9 +194,9 @@
         const tipo = getByLabel('Tipo');
         const subtipo = getByLabel('Subtipo');
         const nombre = getByLabel('Nombre del Pre-requisito');
-        if (tipo) { console.log('Tipo =', tipo); window.PRE_TIPO = tipo; } else { console.warn('未检测到 Tipo'); }
-        if (subtipo) { console.log('Subtipo =', subtipo); window.PRE_SUBTIPO = subtipo; } else { console.warn('未检测到 Subtipo'); }
-        if (nombre) { console.log('Nombre del Pre-requisito =', nombre); window.NOMBRE_PRE = nombre; } else { console.warn('未检测到 Nombre del Pre-requisito'); }
+        if (tipo) { console.log('Tipo =', tipo); window.PRE_TIPO = tipo; } else { console.warn('Tipo no detectado'); }
+        if (subtipo) { console.log('Subtipo =', subtipo); window.PRE_SUBTIPO = subtipo; } else { console.warn('Subtipo no detectado'); }
+        if (nombre) { console.log('Nombre del Pre-requisito =', nombre); window.NOMBRE_PRE = nombre; } else { console.warn('Nombre del Pre-requisito no detectado'); }
     }
 
     /* ========== Rellenar texto（una vez） ========== */
@@ -248,8 +248,8 @@
             const autoText = getAutoTextByNombre(nombre);
             if (!autoText) {
                 console.log('[AUTO] No coincide text，no autorrellena. Nombre =', nombre);
-                FILLED_SEQ = seq; // 标记本轮已处理，避免一直重试
-                return true; // 本轮结束（只打印，不填充）
+                FILLED_SEQ = seq; // Prohibir repeticiones
+                return true; 
             }
 
             writeToQuill(ed, autoText);
