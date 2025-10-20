@@ -204,7 +204,9 @@
 
 
     function showChoiceModal(title, choices) {
-        if (ST.modalOpen || ST.choosing) return Promise.resolve(null);
+        
+        if (ST.modalOpen || ST.choosing) return Promise. {__cancelled: true};
+        //if (ST.modalOpen || ST.choosing) return Promise.resolve(null);
         ST.modalOpen = true; ST.choosing = true;
 
         //Puedes mantener tu clasificación actual
@@ -274,9 +276,10 @@
             });
             root.querySelector('.af-cancel').addEventListener('click',()=>{ cleanup(); { __cancelled: true}; });
             root.querySelector('.af-backdrop').addEventListener('click', ()=>{ cleanup(); { __cancelled: true}; });
+            const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); { __cancelled: true}; } };
             //root.querySelector('.af-cancel').addEventListener('click',()=>{ cleanup(); resolve(null); });
             //root.querySelector('.af-backdrop').addEventListener('click', ()=>{ cleanup(); resolve(null); });
-            const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); resolve(null); } };
+            //const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); resolve(null); } };
             document.addEventListener('keydown', onKey, { once:true });
         });
     }
