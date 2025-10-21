@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NEW-Pre-requisito
 // @namespace    https://your-space.example
-// @version      1.3.0
+// @version      1.3.1
 // @description  solucionar modal ventana
 // @match        https://*.lightning.force.com/*
 // @match        https://*.salesforce.com/*
@@ -11,26 +11,20 @@
 // ==/UserScript==
 
 (function() {
-    /***  Configuración: definir las reglas reales según los códigos de valor  ***/
     const MODAL_WHITELIST = new Set(['01/01', '01/07','03/07']);
 
     const NAME_RULES = {
         '01/01': [{label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT'],
-        //'01/02': '',
-        //'01/03': '',
         '01/04': 'CES OC',
         '01/06': 'IE',
         '01/07': ['FASE OBRA', 'ANULAR', 'PTE ACT CLIENT'],
         '01/19': 'CES',
-        //'01/17': '',
         '01/18': 'OBRA CIVIL',
         '01/20': 'AJUSTAT',
         '01/21': 'ACTA',
         '02/08': 'ESCREIX',
         '03/09': 'CP2',
-        //'03/10': '',
         '03/11': {label: 'PART', write: 'PART', key: 'PART_Permiso' },
-        //'03/12': '',
         '03/13': 'PER',
         '03/14': 'APS',
         '03/07': ['OBRA BACKLOG', 'CP1', 'SUPEDITAT', 'CIVICOS', 'ESTUDI', 'AGP', 'CTR', 'FASES', 'TRAÇAT', 'CE'],
@@ -42,7 +36,6 @@
         '01/07/FASE OBRA': '',
         '01/07/ANULAR': 'Pendiente aportación carta de anulación, justificante de pago y certificado de titularidad bancaria.',
         '01/07/PTE ACT CLIENT': 'Temporalmente, la gestión del expediente queda suspendida a la espera de la aportación por su parte de los documentos que se le han requerido.',
-
     };
 
     const COMM_RULES_2 = {
@@ -53,15 +46,27 @@
         '01/19': 'En breve les serán requeridos los documentos necesarios para la cesión de las instalaciones.',
         '01/20': 'Pendiente recibir proyecto eléctrico para revisión.',
         '01/21': 'Una vez validado el proyecto eléctrico, tendrá que aportar permisos y autorizaciones concedidas, y cronograma de ejecución de obra para programar Acta de Lanzamiento.',
-
         '02/08': 'Pendiente de pago del sobrecoste  indicado en las condiciones - técnico econòmicas remitidas.',
     };
 
-    // —— Etiquetas ——
     const NAME_LABEL_RX = /Nombre del Pre-?requisito/i;
     const COMM_LABEL_RX = /Comunicaci[oó]n al cliente\s*\(push\)/i;
 
-    /***  Estado  ***/
+    let COMM_PENDING = false;
+    let COMM_DEBOUNCE_T = null;
+
+    // —— Utils de normalización y comparación —— //
+    const collator = new Intl.Collator('es', { sensitivity:'base', usage:'sort' });
+    const toObj = (x) => (typeof x === 'object' ? x : { label:String(x), write:String(x), key:String(x) });
+    const byLabel = (a,b) => collator.compare(
+        (toObj(a).label ?? toObj(a).write ?? '').trim(),
+        (toObj(b).label ?? toObj(b).write ?? '').trim()
+    );
+    const buildKey2 = (tipo, subtipo) => `${tipo ?? ''}/${subtipo ?? ''}`;
+    const buildKey3 = (tipo, subtipo, nameKey) => `${buildKey2(tipo, subtipo)}/${nameKey ?? ''}`;
+    const guardReady = () => !(ST.modalOpen || ST.choosing);
+
+
     const ST = {
         tipo: null,
         subtipo: null,
@@ -75,19 +80,15 @@
         lastTextName: null,
         lastKeyComm: null,
         lastTextComm: null,
-        // picker flotante efímero
         pickerEl: null,
         _insidePickerClick: false,
         lockNameOnce: false,
-        lastNameKey: null, //  COMM_RULES_3
-        preNameOverride: null, // remplazar applyName input（{write, key}）
-        noProcShownKey: null, // memorizar `${tipo}/${subtipo}` combo
+        lastNameKey: null,
+        preNameOverride: null,
+        noProcShownKey: null,
         _lastHadRule: null,
-
-
     };
 
-    // —— ESTUDI - Tipo/Subtipo + variable —— //
     const ESTUDI_TARGET = { tipo: '03', subtipo: '07' };
     const ESTUDI_VARIANTS = [
         { label: 'ESTUDI - PER', write: 'ESTUDI - PER', key: 'ESTUDI_PER' },
@@ -99,73 +100,118 @@
         { label: 'ESTUDI - SO', write: 'ESTUDI - SO', key: 'ESTUDI_SO' },
     ];
 
-    // ESTUDI modal 2n nivel（ORDEN ABC）
+    async function resetFields(level = 4) {
+        ensurePickHosts();
+        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input','lightning-input-field']);
+        ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text','lightning-input-field']);
+
+        if (level >= 1) {
+            if (ST.nameHost) writeHostValue(ST.nameHost, '');
+            ST.lastKeyName = null;
+            ST.lastTextName = '';
+            ST.lastNameKey = null;
+        }
+        if (level >= 2) {
+            if (ST.commHost) writeHostValue(ST.commHost, '');
+            ST.lastKeyComm = null;
+            ST.lastTextComm = '';
+        }
+        if (level >= 3) {
+            ST.subtipo = null;
+            ST._lastHadRule = null;
+            ST.noProcShownKey = null;
+            if (ST.subtipoHost) {
+                try {
+                    ST.subtipoHost.value = '';
+                    ST.subtipoHost.dispatchEvent(new CustomEvent('change', { detail:{ value:'' }, bubbles:true, composed:true }));
+                    ST.subtipoHost.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
+                } catch(_) {}
+            }
+        }
+        if (level >= 4) {
+            ST.tipo = null;
+            if (ST.tipoHost) {
+                try {
+                    ST.tipoHost.value = '';
+                    ST.tipoHost.dispatchEvent(new CustomEvent('change', { detail:{ value:'' }, bubbles:true, composed:true }));
+                    ST.tipoHost.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
+                } catch(_) {}
+            }
+        }
+        ST.lockNameOnce = false;
+        ST.modalOpen = false;
+        ST.choosing = false;
+        destroyPicker();
+        document.getElementById('__af_modal_root__')?.remove();
+    }
+
+    const resetName = () => resetFields(1);
+    const resetNameAndComm = () => resetFields(2);
+    const resetNameCommAndSubtipo = () => resetFields(3);
+    const resetAll = () => resetFields(4);
+
+    async function resetFieldsDeferred(level = 2, ms = 80) { //可选稳妥）把 resetFieldsDeferred 的延时再拉长一点
+        await delay(ms); // 延后一个很小的时间，避开 LWC 的一次同步校验周期
+        await resetFields(level); // 再去清空
+    }
+
     async function pickEstudiVariant() {
-        const sorted = [...ESTUDI_VARIANTS].sort((a,b) => (a.label||'').localeCompare(b.label||'', 'es', {sensitivity:'base'}));
-        await clearTipoDependents(true);
+        const sorted = [...ESTUDI_VARIANTS].sort((a,b) => collator.compare(a.label||'', b.label||''));
+        await resetFieldsDeferred(2);
         return await showChoiceModal('Seleccione Pre-requisito (ESTUDI)', sorted);
     }
 
-    /* ==== walkDeep：profundidad limitada / Nodos limitados，Evitar que la página se quede bloqueada ==== */
+    function requestApplyComm() {
+        // 弹窗开着就先记一笔，等关闭后再执行
+        if (ST.modalOpen || ST.choosing) { COMM_PENDING = true; return; }
+        // 简单防抖
+        clearTimeout(COMM_DEBOUNCE_T);
+        COMM_DEBOUNCE_T = setTimeout(() => {
+            COMM_PENDING = false;
+            applyComm(); // 真正调用
+        }, 160);// （可选）把通信的防抖再宽一点
+    }
+
     function* walkDeep(root, opts = {}) {
-        const MAX_NODES = opts.maxNodes ?? 2000; // El número máximo de nodos a atravesar a la vez (se puede ajustar según sea necesario)
-        const MAX_DEPTH = opts.maxDepth ?? 4; // Nivel máximo de profundidad de sombra/subárbol
+        const MAX_NODES = opts.maxNodes ?? 2000;
+        const MAX_DEPTH = opts.maxDepth ?? 4;
         let seen = 0;
         const stack = [{ node: root, depth: 0 }];
-
         while (stack.length) {
             const { node, depth } = stack.pop();
             if (!node) continue;
             yield node;
-            if (++seen >= MAX_NODES) break; // Detenerse inmediatamente si se excede el límite
+            if (++seen >= MAX_NODES) break;
             if (depth >= MAX_DEPTH) continue;
-
-            // Entrar shadowRoot
             if (node.shadowRoot) stack.push({ node: node.shadowRoot, depth: depth + 1 });
-
-            // Introducir elementos secundarios
             if (node.children && node.children.length) {
                 for (let i = node.children.length - 1; i >= 0; i--) {
                     stack.push({ node: node.children[i], depth: depth + 1 });
                 }
             }
-
-            // Document / ShadowRoot 的 children
-            //if (node instanceof Document || node instanceof ShadowRoot) {
-            //    const kids = node.children || node.childNodes || [];
-            //    for (let i = kids.length - 1; i >= 0; i--) {
-            //        stack.push({ node: kids[i], depth: depth + 1 });
-            //    }
-            // }
-
-            // iframe del mismo origen
             const tag = node.tagName;
             if (tag === 'IFRAME' || tag === 'FRAME') {
                 try {
                     if (node.contentDocument) {
                         stack.push({ node: node.contentDocument, depth: depth + 1 });
                     }
-                } catch (_) { } /* Ignorar entre dominios */
+                } catch (_) {}
             }
         }
     }
 
-    /* ==== Primero findHostByLabel ligero: primero la ruta rápida, luego una reserva de profundidad limitada y caché ==== */
-    const __FH_CACHE__ = new Map(); // key: rx.toString() + '|' + tags.join(',')
+    const __FH_CACHE__ = new Map();
 
     function findHostByLabel(rx, tags){
         const key = rx.toString() + '|' + tags.join(',');
         const cached = __FH_CACHE__.get(key);
         if (cached && document.contains(cached)) return cached;
 
-        // 1) Ruta rápida: buscar solo en documentos de nivel superior
         const fast = document.querySelectorAll(tags.join(','));
         for (const el of fast) {
             const lab = (el.label || el.getAttribute?.('label') || '').trim();
             if (rx.test(lab)) { __FH_CACHE__.set(key, el); return el; }
         }
-
-        // 2) Respaldo: escaneo profundo/de profundidad limitada de nodos (use la limitación walkDeep mencionada anteriormente)
         for (const root of walkDeep(document, { maxNodes: 2000, maxDepth: 4 })) {
             if (!root.querySelectorAll) continue;
             for (const tag of tags) {
@@ -186,7 +232,6 @@
             if(current === text) return true;
             host.value = text;
 
-            // Notificar a Lightning que el valor cambió
             try {
                 host.dispatchEvent(new InputEvent('input', { bubbles:true, composed:true }));
             } catch(_) {
@@ -194,6 +239,13 @@
             }
             host.dispatchEvent(new CustomEvent('change', { detail:{ value:text }, bubbles:true, composed:true }));
             host.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
+            // —— 关键：若是必填字段且文本非空，主动清除错误并触发一次校验 —— //
+            try {
+                if (text && text.trim() !== '') {
+                    if (typeof host.setCustomValidity === 'function') host.setCustomValidity('');
+                    if (typeof host.reportValidity === 'function') host.reportValidity();
+                }
+            } catch(_) {}
             return true;
         }catch(e){
             console.warn('Error al escribir:', e);
@@ -202,22 +254,80 @@
     }
 
 
-    function clearNameAndCommOnly(){
-        // 确保拿到 host
-        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
-        ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text']);
 
-        // 清空两个字段
-        if (ST.nameHost) writeHostValue(ST.nameHost, '');
-        if (ST.commHost) writeHostValue(ST.commHost, '');
 
-        // 清状态，避免 applyComm 用旧缓存又写回去
-        ST.lastTextName = '';
-        ST.lastNameKey = null;
-        ST.lastKeyName = null;
 
-        ST.lastTextComm = '';
-        ST.lastKeyComm = null;
+
+
+    // —— Builder de modal genérico —— //
+    async function showModal({ title, bodyHTML, actions }) {
+        return new Promise(resolve => {
+            const root = document.createElement('div');
+            root.id = '__af_modal_root__';
+            root.innerHTML = `
+        <div class="af-backdrop"></div>
+        <div class="af-modal" role="dialog" aria-modal="true" aria-label="${title}">
+          <div class="af-header">${title}</div>
+          <div class="af-body">${bodyHTML || ''}</div>
+          <div class="af-actions"></div>
+        </div>`;
+
+            const style = document.createElement('style');
+            style.id = 'af-modal-style';
+            style.textContent = `
+  #__af_modal_root__{position:fixed;inset:0;z-index:999999;font-family:system-ui,Segoe UI,Arial,Helvetica,sans-serif}
+  #__af_modal_root__ .af-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.35)}
+  #__af_modal_root__ .af-modal{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);
+    padding:16px;display:flex;flex-direction:column;gap:12px;
+    width:fit-content;max-width:90vw;min-width:360px;
+  }
+  #__af_modal_root__ .af-header{font-weight:600;font-size:16px}
+  /* grid de opciones (se controla el nº de columnas con --af-cols) */
+  #__af_modal_root__ .af-body-grid{
+    display:grid;grid-template-columns: repeat(var(--af-cols,3), minmax(110px, 1fr));
+    gap:10px; align-items:stretch;
+  }
+  #__af_modal_root__ .af-option{
+    min-height:40px; padding:10px 12px; border-radius:10px;
+    border:1px solid #e3e3e3; background:#f6f7f9; cursor:pointer;
+    width:100%; display:flex; align-items:center; justify-content:center; text-align:center;
+    white-space:normal; word-break:break-word; overflow:visible;
+  }
+  #__af_modal_root__ .af-option:hover{background:#eef2ff;border-color:#c7d2fe}
+  #__af_modal_root__ .af-actions{display:flex;justify-content:flex-end}
+  #__af_modal_root__ .af-ok, #__af_modal_root__ .af-cancel{
+    padding:8px 12px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer
+  }
+  #__af_modal_root__ .af-ok:hover, #__af_modal_root__ .af-cancel:hover{background:#f7f7f7}
+  `;
+
+            document.body.appendChild(style);
+            document.body.appendChild(root);
+            const $actions = root.querySelector('.af-actions');
+            (actions || [{label:'Aceptar', id:'ok'}]).forEach(a => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'af-ok';
+                b.textContent = a.label;
+                b.addEventListener('click', () => done(a.id));
+                $actions.appendChild(b);
+            });
+            function done(result){ root.remove(); style.remove(); resolve(result); }
+
+            //可选
+            //function done(result){
+            //  try { root.remove(); style.remove(); } catch(_) {}
+            // 兜底：任何关闭路径都把标志位清掉
+            //  ST.modalOpen = false;
+            //  ST.choosing = false;
+            //  resolve(result);
+            //}
+
+            root.querySelector('.af-backdrop').addEventListener('click', () => done(null));
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') done(null); }, { once:true });
+        });
     }
 
 
@@ -226,149 +336,77 @@
         if (ST.modalOpen || ST.choosing) return Promise.resolve(null);
         ST.modalOpen = true; ST.choosing = true;
 
-        //Puedes mantener tu clasificación actual
-        choices = [...choices].sort((a,b) => {
-            const n = x => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim();
-            return n(a).localeCompare(n(b), 'es', {sensitivity:'base'});
-        });
-
-        // —— Clave: Determina dinámicamente el número de columnas según el número de opciones (hasta 3 columnas) —— //
-        const MAX_COLS = 3;
-        const BTN_MIN_W = 110; // Ancho mínimo de cada botón (ajustable)
-        const GAP = 10; //Espaciado entre botones (ajustable)
-        const cols = Math.min(MAX_COLS, Math.max(1, choices.length));
+        choices = [...choices].sort(byLabel);
+        const cols = Math.min(3, Math.max(1, choices.length));
+        const body = `
+    <div class="af-body-grid" style="--af-cols:${cols}">
+      ${choices.map((c,i)=>`<button class="af-option" data-idx="${i}" type="button" title="${toObj(c).label}">${toObj(c).label}</button>`).join('')}
+    </div>`;
 
         return new Promise(resolve => {
-            const root = document.createElement('div');
-            root.id = '__af_modal_root__';
-            root.innerHTML = `
-      <div class="af-backdrop"></div>
-      <div class="af-modal" role="dialog" aria-modal="true" aria-label="${title}">
-        <div class="af-header">${title}</div>
-        <div class="af-body">
-          ${choices.map((c,i)=>{
-                const lbl = (typeof c === 'object') ? c.label : c;
-                return `<button class="af-option" data-idx="${i}" type="button" title="${lbl}">${lbl}</button>`;
-            }).join('')}
-        </div>
-        <div class="af-actions"><button class="af-cancel" type="button">Cancelar</button></div>
-      </div>`;
+            let finished = false;
+            const finalize = (val) => {
+                if (finished) return; // ejecutar solo una vez
+                finished = true;
+                // cerrar modal
+                try {
+                    document.getElementById('__af_modal_root__')?.remove();
+                    document.getElementById('af-modal-style')?.remove();
+                } catch(_) {}
+                // reset
+                ST.modalOpen = false;
+                ST.choosing = false;
+                // 如果有挂起的 applyComm 请求，这里补一次（带防抖）
+                if (typeof COMM_PENDING !== 'undefined' && COMM_PENDING) requestApplyComm();
+                resolve(val ?? null);
+            };
+            showModal({ title, bodyHTML: body, actions: [{label:'Cancelar', id:null}] })
+                .then(() => finalize(null));
 
-            const style = document.createElement('style');
-            style.textContent = `
-      #__af_modal_root__{position:fixed;inset:0;z-index:999999;font-family:system-ui,Segoe UI,Arial,Helvetica,sans-serif}
-      #__af_modal_root__ .af-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.35)}
-      #__af_modal_root__ .af-modal{
-        position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-        background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);
-        padding:16px;display:flex;flex-direction:column;gap:12px;
-        /* Adaptar al ancho máximo en función del número de columnas: ancho del botón * número de columnas + espaciado + relleno */
-        width:fit-content;max-width:90vw;min-width:360px;
-      }
-      #__af_modal_root__ .af-header{font-weight:600;font-size:16px}
-      #__af_modal_root__ .af-body{
-        display:grid;
-        grid-template-columns: repeat(${cols}, minmax(${BTN_MIN_W}px, 1fr));
-        gap:${GAP}px; align-items:stretch;
-      }
-      #__af_modal_root__ .af-option{
-        min-height:40px; padding:10px 12px; border-radius:10px;
-        border:1px solid #e3e3e3; background:#f6f7f9; cursor:pointer;
-        width:100%;
-        /* Varias líneas son adaptativas y centradas */
-        display:flex; align-items:center; justify-content:center; text-align:center;
-        white-space:normal; word-break:break-word; overflow:visible;
-      }
-      #__af_modal_root__ .af-option:hover{background:#eef2ff;border-color:#c7d2fe}
-      #__af_modal_root__ .af-actions{display:flex;justify-content:flex-end}
-      #__af_modal_root__ .af-cancel{padding:8px 12px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}
-      #__af_modal_root__ .af-cancel:hover{background:#f7f7f7}
-    `;
-            document.body.appendChild(style);
-            document.body.appendChild(root);
-
-            const cleanup=()=>{ root.remove(); style.remove(); ST.modalOpen=false; ST.choosing=false; };
-            root.querySelectorAll('.af-option').forEach((btn, i)=>{
-                btn.addEventListener('click',()=>{ const choice = choices[i]; cleanup(); resolve(choice ?? null); });
+            document.querySelectorAll('.af-option').forEach((btn, i) => {
+                const handler = (ev) => {
+                    // 防止被外层 Lightning 失焦/遮罩抢走事件
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    ev.stopImmediatePropagation();
+                    finalize(choices[i]);
+                };
+                // 提前于 click 的通道，更稳
+                btn.addEventListener('pointerdown', handler, { once: true, capture: true });
+                // 兜底（某些环境仍走 click）
+                btn.addEventListener('click', handler, { once: true, capture: true });
             });
-            root.querySelector('.af-cancel').addEventListener('click',()=>{ cleanup(); resolve(null); });
-            root.querySelector('.af-backdrop').addEventListener('click', ()=>{ cleanup(); resolve(null); });
-            const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); resolve(null); } };
-            document.addEventListener('keydown', onKey, { once:true });
+
         });
     }
+
 
     function showNoticeModal(message){
-        if (ST.modalOpen || ST.choosing) return Promise.resolve(); // Evita conflictos con otras ventanas emergentes
+        if (ST.modalOpen || ST.choosing) return Promise.resolve();
         ST.modalOpen = true; ST.choosing = true;
-
-        return new Promise(resolve => {
-            const root = document.createElement('div');
-            root.id = '__af_notice_root__';
-            root.innerHTML = `
-      <div class="af-backdrop"></div>
-      <div class="af-modal" role="dialog" aria-modal="true" aria-label="Aviso">
-        <div class="af-header">Aviso</div>
-        <div class="af-body"><div class="af-msg" style="padding:6px 2px;">${message}</div></div>
-        <div class="af-actions"><button class="af-ok" type="button">Aceptar</button></div>
-      </div>`;
-
-            const style = document.createElement('style');
-            style.textContent = `
-      #__af_notice_root__{position:fixed;inset:0;z-index:999999;font-family:system-ui,Segoe UI,Arial,Helvetica,sans-serif}
-      #__af_notice_root__ .af-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.35)}
-      #__af_notice_root__ .af-modal{
-        position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-        background:#fff;border-radius:12px;min-width:360px;max-width:560px;
-        box-shadow:0 20px 60px rgba(0,0,0,.3);
-        padding:16px;display:flex;flex-direction:column;gap:12px
-      }
-      #__af_notice_root__ .af-header{font-weight:600;font-size:16px}
-      #__af_notice_root__ .af-actions{display:flex;justify-content:flex-end}
-      #__af_notice_root__ .af-ok{padding:8px 12px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}
-      #__af_notice_root__ .af-ok:hover{background:#f7f7f7}
-    `;
-            document.body.appendChild(style);
-            document.body.appendChild(root);
-
-            const cleanup=()=>{ root.remove(); style.remove(); ST.modalOpen=false; ST.choosing=false; resolve(); };
-            root.querySelector('.af-ok').addEventListener('click', cleanup);
-            root.querySelector('.af-backdrop').addEventListener('click', cleanup);
-            const onKey=e=>{ if(e.key==='Escape'){ document.removeEventListener('keydown',onKey); cleanup(); } };
-            document.addEventListener('keydown', onKey, { once:true });
-        });
+        return showModal({ title:'Aviso', bodyHTML:`<div class="af-msg" style="padding:6px 2px;">${message}</div>` })
+            .then(()=>{ ST.modalOpen=false; ST.choosing=false; });
     }
 
-    async function resolveRuleValueUI(key, rule){
-        // Matriz: puede ser una mezcla de cadenas u objetos
+    async function chooseFromRule(key, rule){
+        if (rule === undefined) return null;
+        // Si la regla es lista
         if (Array.isArray(rule)) {
-            if (!MODAL_WHITELIST.has(key)) {
-                const first = rule[0];
-                return (typeof first === 'object') ? first : { label:first, write:first, key:first };
+            // Sin modal: toma la primera normalizada
+            if (!MODAL_WHITELIST.has(key)) return toObj(rule[0]);
+            if (!guardReady()) return null;
+            await resetFieldsDeferred(2); // limpia Nombre + Comunicación antes del modal
+            const picked = await showChoiceModal('Seleccione Pre-requisito', [...rule].sort(byLabel));
+            if (!picked) return null;
+            // Subflujo ESTUDI centralizado
+            if (key === '03/07' && (toObj(picked).label||toObj(picked).write||'').trim().toUpperCase() === 'ESTUDI') {
+                const v = await pickEstudiVariant();
+                return v ? toObj(v) : null;
             }
-            if (ST.modalOpen || ST.choosing) return null;
-            // —— Ordenar alfabéticamente (ignorando mayúsculas y minúsculas y acentos) —— //
-            const toLabel = (x) => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim();
-            const sortedRule = [...rule].sort((a, b) => toLabel(a).localeCompare(toLabel(b), 'es', { sensitivity: 'base' }));
-            await clearTipoDependents(true);
-
-            const picked = await showChoiceModal(`Seleccione Pre-requisito`, sortedRule);
-            if (!picked) return null; // Predicción
-
-            // Si es 03/07 y el usuario selecciona ESTUDI, entonces pasa a la ventana emergente secundaria ESTUDI
-            if (key === '03/07') {
-                const getLabel = (x) => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim().toUpperCase();
-                if (getLabel(picked) === 'ESTUDI') {
-                    const v = await pickEstudiVariant();
-                    if (!v) return null;
-                    return v; // {label, write:'ESTUDI - XXX', key:'ESTUDI_XXX'}
-                }
-            }
-            return (typeof picked === 'object') ? picked : { label:picked, write:picked, key:picked };
+            return toObj(picked);
         }
-        // Valor único: puede ser una cadena o un objeto
-        if (rule && typeof rule === 'object') return rule;
-        return { label: rule ?? '', write: rule ?? '', key: rule ?? '' };
+        // Regla única
+        return toObj(rule);
     }
 
     function buildNameCatalog(rules){
@@ -389,15 +427,13 @@
             };
             Array.isArray(val) ? val.forEach(push) : push(val);
         }
-        // Ordenación opcional
-        out.sort((a,b)=> a.label.localeCompare(b.label,'es'));
+        out.sort((a,b)=> collator.compare(a.label, b.label));
         return out;
     }
     const NAME_CATALOG = buildNameCatalog(NAME_RULES);
 
-    // -- Agrega todos los elementos en NAME_RULES donde escribe === 'PART' por (tipo/subtipo) --
     function computePartGroups(rules){
-        const groups = new Map(); // key: "tipo/subtipo" -> { tipo, subtipo, variants:[] }
+        const groups = new Map();
         for (const key of Object.keys(rules)) {
             const [tipo, subtipo] = key.split('/');
             const val = rules[key];
@@ -406,7 +442,6 @@
                 const label = (typeof x==='object') ? (x.label ?? x.write ?? '') : x;
                 const write = (typeof x==='object') ? (x.write ?? x.label ?? '') : x;
                 const k = (typeof x==='object') ? (x.key ?? write) : write;
-                // Solo importan las entradas donde se escribe === 'PART' (por ejemplo, PART-Acciones / PART-Permiso)
                 if (String(write).trim().toUpperCase() !== 'PART') return;
                 const gk = `${tipo}/${subtipo}`;
                 if (!groups.has(gk)) groups.set(gk, { tipo, subtipo, variants: [] });
@@ -414,7 +449,6 @@
             };
             Array.isArray(val) ? val.forEach(push) : push(val);
         }
-        // Mantener únicamente grupos con variantes de 1 o más PARTES
         return [...groups.values()].filter(g => g.variants.length > 0);
     }
     const PART_GROUPS = computePartGroups(NAME_RULES);
@@ -469,7 +503,6 @@
         }
     }
 
-    /***  Picker flotante efímero: solo al hacer clic en el campo  ***/
     function destroyPicker(){
         ST.pickerEl?.remove();
         ST.pickerEl = null;
@@ -480,9 +513,8 @@
         const r = host.getBoundingClientRect?.(); if (!r) return;
         const w = wrap.offsetWidth || 240;
         const gapX = 8, gapY = 8;
-
         let left = Math.min(r.right + gapX, innerWidth - w - 8);
-        let top = Math.max(8, r.top); // alineado arriba del input
+        let top = Math.max(8, r.top);
         wrap.style.left = left + 'px';
         wrap.style.top = top + 'px';
     }
@@ -499,37 +531,34 @@
             boxShadow:'0 6px 24px rgba(0,0,0,0.12)', display:'flex',
             alignItems:'stretch', gap:'8px',
             fontFamily:'system-ui, Segoe UI, Arial, Helvetica, sans-serif',
-            width:'auto', // ← auto
-            //maxWidth:'min(500px, 90vw)' // ←max 520px screen max 90%
+            width:'auto',
         });
 
         const label = document.createElement('div');
-        label.innerHTML = 'Selección&nbsp;del<br>Pre-requisito:'; // ← “Selección del” inseparable
+        label.innerHTML = 'Selección&nbsp;del<br>Pre-requisito:';
         Object.assign(label.style, {
             fontSize: '12px',
             lineHeight: '1.25',
             fontWeight: '600',
-            whiteSpace: 'normal', // respeta el <br>
-            wordBreak: 'keep-all', // no cortes palabras
+            whiteSpace: 'normal',
+            wordBreak: 'keep-all',
             overflowWrap: 'normal',
-            flex: '0 0 auto', // no se comprime en el flex
-            minWidth: 'max-content', // ancho suficiente para “Selección del”
+            flex: '0 0 auto',
+            minWidth: 'max-content',
             padding: '4px 2px',
             marginRight: '8px'
         });
 
-        //Object.assign(label.style, { fontSize:'12px', lineHeight:'1.2', whiteSpace:'nowrap', padding:'4px 2px' });
         const list = document.createElement('div');
         Object.assign(list.style, {
             display:'grid',
-            gridTemplateColumns:'repeat(2, minmax(100px, 1fr))', // ← 2 colum；min 160px,width
+            gridTemplateColumns:'repeat(2, minmax(100px, 1fr))',
             gap:'6px',
-            maxHeight:'min(60vh, 394px)', // ← no bigger than 60% or 360px para ajustar la ventana flotante de nombre del prerequisito.
+            maxHeight:'min(60vh, 394px)',
             overflow:'auto',
-            width:'100%' // ← width
+            width:'100%'
         });
 
-        //Se utiliza para crear ventanas flotantes.
         function mkBtn(entry){
             const b = document.createElement('button');
             b.type = 'button';
@@ -556,16 +585,15 @@
                         ST.lockNameOnce = true;
                         writeHostValue(ST.nameHost, entry.write);
                         ST.lastTextName = entry.write;
-                        ST.lastNameKey = entry.key; // COMM_RULES_3
+                        ST.lastNameKey = entry.key;
                     }
-                    applyComm();
+                    requestApplyComm();
                     destroyPicker();
                 }, 180);
             });
             return b;
         }
 
-        // —— Botón único "PART": reproduce directamente Acciones / Permisos —— //
         function mkUniversalPartBtn(){
             const b = document.createElement('button');
             b.type = 'button';
@@ -584,7 +612,6 @@
                 ST._insidePickerClick = true; queueMicrotask(()=>{ ST._insidePickerClick = false; });
 
                 try {
-                    // Recopilar variantes de PART (de todos los grupos) y anular el texto mostrado
                     const labelMap = {
                         'PART_Acciones': 'PART - Pendiente acciones cliente',
                         'PART_Permiso':  'PART - Pendiente de permisos',
@@ -602,29 +629,25 @@
                     }
                     if (!variants.length) { destroyPicker(); return; }
 
-                    // Mostrar solo variantes de PART
                     if (ST.nameHost) writeHostValue(ST.nameHost, '');
-                    await clearTipoDependents(true);
+                    await resetFieldsDeferred(2);
                     const choice = await showChoiceModal('Seleccione Pre-requisito (PART)', variants);
                     if (!choice) { destroyPicker(); return; }
 
-                    // Dígale a applyName: No vuelva a mostrar la ventana emergente esta vez
                     ST.preNameOverride = { write: 'PART', key: choice.key };
                     ST.lockNameOnce = true;
                     ST.lastTextName = 'PART';
                     ST.lastNameKey = choice.key;
 
-                    // Establecer Tipo/Subtipo del grupo correspondiente
                     ensurePickHosts();
                     await setComboValue(ST.tipoHost, choice._target.tipo);
                     setTimeout(async () => {
                         await setComboValue(ST.subtipoHost, choice._target.subtipo);
 
-                        // Introducir Nombre='PARTE'
                         ST.nameHost = findHostByLabel(NAME_LABEL_RX, ['lightning-input']) || ST.nameHost;
                         if (ST.nameHost) writeHostValue(ST.nameHost, 'PART');
 
-                        applyComm();
+                        requestApplyComm();
                         destroyPicker();
                     }, 180);
                 } catch (err) {
@@ -635,7 +658,6 @@
             return b;
         }
 
-        // —— Botón único "ESTUDI": haga clic para que aparezcan 7 opciones de ESTUDI —— //
         function mkUniversalEstudiBtn(){
             const b = document.createElement('button');
             b.type = 'button';
@@ -652,50 +674,40 @@
                 ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
                 ST._insidePickerClick = true; queueMicrotask(()=>{ ST._insidePickerClick = false; });
 
-                // Primero saca la variante ESTUDI
-                // ...después de pickEstudiVariant():
                 const v = await pickEstudiVariant();
                 if (!v) { destroyPicker(); return; }
 
-                // Clave: Indica a applyName que no muestre una ventana emergente esta vez y que solo escriba ESTUDI - XXX
                 ST.preNameOverride = { write: v.write, key: v.key };
                 ST.lockNameOnce = true;
                 ST.lastTextName = v.write;
                 ST.lastNameKey = v.key;
 
-                // Ajustes 03/07
                 ensurePickHosts();
                 await setComboValue(ST.tipoHost, ESTUDI_TARGET.tipo);
                 setTimeout(async () => {
                     await setComboValue(ST.subtipoHost, ESTUDI_TARGET.subtipo);
 
-                    // Escribe "Nombre del Pre-requisito" = ESTUDI - XXX (escribir una vez es más estable)
                     ST.nameHost = findHostByLabel(NAME_LABEL_RX, ['lightning-input']) || ST.nameHost;
                     if (ST.nameHost) writeHostValue(ST.nameHost, v.write);
 
-                    // No escriba comunicación: applyComm quedará vacío si falla
-                    applyComm();
+                    requestApplyComm();
                     destroyPicker();
                 }, 180);
             });
             return b;
         }
 
-        //——Construir lista de candidatos: filtrar elementos vacíos + eliminar variantes individuales de PART/ESTUDI + inyectar "PART/ESTUDI único"—— //
         let entries = NAME_CATALOG
         .filter(e => e && e.label && e.label.trim() !== '')
         .filter(e => String(e.write).trim().toUpperCase() !== 'PART')
         .filter(e => String(e.label).trim().toUpperCase() !== 'ESTUDI' &&
                 String(e.write).trim().toUpperCase() !== 'ESTUDI');
 
-        // Inyectar dos botones unificados
         entries.push({ label: 'PART', __isPartUniversal:   true });
         entries.push({ label: 'ESTUDI', __isEstudiUniversal: true });
 
-        // Clasificar
         entries.sort((a, b) => a.label.localeCompare(b.label, 'es'));
 
-        // Prestar
         for (const entry of entries) {
             if (entry.__isPartUniversal) list.appendChild(mkUniversalPartBtn());
             else if (entry.__isEstudiUniversal) list.appendChild(mkUniversalEstudiBtn());
@@ -708,7 +720,6 @@
         ST.pickerEl = wrap;
         positionPickerNear(ST.nameHost, wrap);
 
-        // Cerrar solo cuando se hace clic en el punto externo
         const onDocDown = (e) => {
             if (ST._insidePickerClick) return;
             const path = e.composedPath?.() || [];
@@ -722,26 +733,26 @@
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('keydown', onKey, true);
     }
+    let EXEC_TOKEN = 0;
+    const nextToken = () => (++EXEC_TOKEN);
 
-    /***  Lógica de aplicar reglas  ***/
+
     const applyName = (() => {
-        if (ST.modalOpen || ST.choosing) return;
         let t=null;
         return async () => {
+            if (ST.modalOpen || ST.choosing) return;
             if (!ST.subtipo) return;
             clearTimeout(t);
             t = setTimeout(async () => {
+                if (ST.modalOpen || ST.choosing) return; // 先 guard
+                const token = nextToken(); // 再递增
+
                 const key = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
-                //if (ST.lastKeyName === key && ST.lastTextName != null) return;
                 if (ST.lastKeyName === key && ST.lastTextName != null && ST._lastHadRule === true) return;
-
                 const rule = NAME_RULES[key];
-
                 ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
-
-                // —— Si hay un resultado de preselección único, escríbalo directamente y omita la ventana emergente —— //
                 if (ST.preNameOverride) {
-                    const picked = ST.preNameOverride; // { write, key }
+                    const picked = ST.preNameOverride;
                     ST.preNameOverride = null;
                     ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
                     if (ST.nameHost) {
@@ -749,28 +760,23 @@
                         ST.lastTextName = picked.write || '';
                         ST.lastNameKey = picked.key || (picked.write || '');
                     }
-                    ST.lastKeyName = key; // key = `${ST.tipo}/${ST.subtipo}`
-                    applyComm();
-                    return; // resolveRuleValueUI ya no se activa → no aparecerá ninguna ventana emergente
+                    ST.lastKeyName = key;
+                    requestApplyComm();
+                    return;
                 }
 
                 if (rule === undefined) {
-                    // Lógica de limpieza
                     if (ST.lastTextName && ST.lastTextName !== '') {
                         if (writeHostValue(ST.nameHost, '')) ST.lastTextName = '';
                     }
                     ST.lastKeyName = key;
                     ST._lastHadRule = false;
 
-                    // Solo se solicita una vez la combinación actual
-                    const k = key; // `${ST.tipo}/${ST.subtipo}`
+                    const k = key;
                     if (ST.tipo && ST.subtipo && ST.noProcShownKey !== k) {
                         ST.noProcShownKey = k;
                         const msg = `No procede el prerrequisito con el TIPO y SUBTIPO seleccionados.`;
-                        //const msg = `No procede el prerrequisito con el TIPO "${ST.tipo}" y SUBTIPO "${ST.subtipo}" seleccionados.`;
-                        await resetSubtipoOnly();
-                        await clearTipoDependents(true);
-
+                        await resetFields(3);
                         await showNoticeModal(msg);
                     }
                     return;
@@ -779,11 +785,12 @@
                 if (ST.lockNameOnce) {
                     ST.lockNameOnce = false;
                     ST.lastKeyName = key;
-                    applyComm();
+                    requestApplyComm();
                     return;
                 }
 
-                const picked = await resolveRuleValueUI(key, rule);
+                const picked = await chooseFromRule(key, rule);
+                if (token !== EXEC_TOKEN) return; // descarta resultados obsoletos
                 if (picked === null) return;
                 const writeText = picked.write ?? picked.label ?? '';
                 if (writeHostValue(ST.nameHost, writeText)) {
@@ -792,20 +799,23 @@
                     ST._lastHadRule = true;
                 }
                 ST.lastKeyName = key;
-                applyComm();
+                requestApplyComm();
             }, 120);
         };
     })();
 
     const applyComm = (() => {
-        if (ST.modalOpen || ST.choosing) return;
         let t=null;
         return async () => {
+            if (ST.modalOpen || ST.choosing) return;
             clearTimeout(t);
             t = setTimeout(async () => {
+                if (ST.modalOpen || ST.choosing) return; // 先 guard
+                const token = nextToken(); // 再递增
+
                 const key2 = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
                 const nombreKey = ST.lastNameKey || ST.lastTextName || '';
-                const key3 = `${key2}/${nombreKey}`;
+                const key3 = buildKey3(ST.tipo, ST.subtipo, nombreKey);
                 const rule3 = COMM_RULES_3[key3];
                 const rule2 = COMM_RULES_2[key2];
                 const rule = (rule3 !== undefined) ? rule3 : rule2;
@@ -821,7 +831,8 @@
                     return;
                 }
 
-                const picked = await resolveRuleValueUI((rule3 !== undefined) ? key3 : key2, rule);
+                const picked = await chooseFromRule((rule3 !== undefined) ? key3 : key2, rule);
+                if (token !== EXEC_TOKEN) return; // descarta resultados obsoletos
                 if (picked === null) return;
 
                 const writeText = (typeof picked === 'object') ? (picked.write ?? picked.label ?? '') : picked;
@@ -831,8 +842,6 @@
         };
     })();
 
-    /***  Listeners  ***/
-    // Solo almacena en caché el host, ya no aparece automáticamente debido al foco
     function onFocusIn(e){
         const path = e.composedPath?.() || [];
         const tag = n => n && n.tagName;
@@ -849,27 +858,23 @@
             const label = areaHost.label || areaHost.getAttribute?.('label') || '';
             if (COMM_LABEL_RX.test(label) && !ST.commHost) {
                 ST.commHost = areaHost;
-                applyComm();
+                requestApplyComm();
             }
         }
     }
 
-    //Abre la lista flotante solo cuando se hace clic en "Nombre del Pre-requisito"
     document.addEventListener('click', (e) => {
         const path = e.composedPath?.() || [];
-        // Si se hace clic en el panel flotante, ignorar
         if (path.some(n => n && n.id === '__af_name_picker_ephemeral__')) return;
 
         const hit = path.find(n => n && n.tagName === 'LIGHTNING-INPUT');
-        if (!hit) return;
-        const lab = hit.label || hit.getAttribute?.('label') || '';
-        if (NAME_LABEL_RX.test(lab)) {
+        const lab = hit ? (hit.label || hit.getAttribute?.('label') || '') : '';
+        if (hit && NAME_LABEL_RX.test(lab)) {
             ST.nameHost = hit;
             openNamePickerOnDemand();
         }
     }, true);
 
-    // Mark: El usuario acaba de hacer clic en el menú desplegable Subtipo (hacer clic en las opciones dentro de los próximos 1,2 segundos contará como esta apertura)
     document.addEventListener('pointerdown', (e) => {
         const path = e.composedPath?.() || [];
         const combo = path.find(n => n && n.tagName === 'LIGHTNING-COMBOBOX');
@@ -877,19 +882,15 @@
         const label = combo.label || combo.getAttribute?.('label') || '';
         if (label === 'Subtipo') {
             ST._subtipoListOpen = true;
-            // Tiempo de espera para evitar que la bandera quede colgada
             clearTimeout(ST._subtipoListTimer);
-            ST._subtipoListTimer = setTimeout(() => { ST._subtipoListOpen = false; }, 2000); //延长点击时间
+            ST._subtipoListTimer = setTimeout(() => { ST._subtipoListOpen = false; }, 2000);
         }
     }, true);
 
     document.addEventListener('click', async (e) => {
-        // Solo proceso dentro del periodo de ventana de "Se acaba de abrir el menú desplegable de subtipo"
         if (!ST._subtipoListOpen) return;
 
         const path = e.composedPath?.() || [];
-
-        // Encuentre el "nodo de opción" en el que hizo clic en la superposición de Salesforce
         let opt = null;
         for (const n of path) {
             if (!n || !n.getAttribute) continue;
@@ -901,32 +902,23 @@
         }
         if (!opt) return;
 
-        // Obtener el valor de la opción en la que se hizo clic esta vez (primero el valor de los datos, luego el texto)
         const picked = (opt.getAttribute('data-value') || opt.dataset?.value || (opt.textContent || '')).trim();
         if (!picked) return;
 
-        // Subtipo actualmente seleccionado
         const currentSub = (ST.subtipo || '').trim();
-        // Procesar solo cuando se "hace clic en el mismo subtipo"; de lo contrario, dejar el comportamiento predeterminado
         if (picked.toLowerCase() !== currentSub.toLowerCase()) {
-            ST._subtipoListOpen = false; // Si se selecciona otro valor, onPickChange seguirá la lógica normal.
+            ST._subtipoListOpen = false;
             return;
         }
 
-        // Determinar si este Tipo/Subtipo es una "regla de selección múltiple" (01/01 o 01/07)
-        const key = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
+        const key = buildKey2(ST.tipo, ST.subtipo);
         const rule = NAME_RULES[key];
         const isMulti = Array.isArray(rule);
 
-
-
-
-        // No rules, aviso no procede
         if (rule === undefined) {
             ST._subtipoListOpen = false;
-            await clearTipoDependents(true);
-            await showNoticeModal('No procede el prerrequisito con el TIPO y SUBTIPO seleccionados.', 'Aviso');
-            await resetSubtipoOnly();
+            await resetFields(3);
+            await showNoticeModal('No procede el prerrequisito con el TIPO y SUBTIPO seleccionados.');
             return;
         }
 
@@ -934,98 +926,44 @@
             ST._subtipoListOpen = false;
             return;
         }
-
-        // El usuario "selecciona nuevamente" en el mismo Subtipo → Interceptamos y abrimos una ventana
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-
         ST._subtipoListOpen = false;
-        await clearTipoDependents(true);
-        // Aparece un modal de selección múltiple
+        await resetFieldsDeferred(2);
         const choice = await showChoiceModal('Seleccione Pre-requisito', rule);
-        if (choice == null) return;
 
-        //Solo cuando la clave actual es 03/07 y el usuario selecciona ESTUDI → ingresa a la ventana emergente secundaria
+        // —— ★ 新增：03/07 的 ESTUDI 需要二级弹窗 —— //
         const keyNow = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
-        const getLabel = x => (typeof x === 'object' ? (x.label ?? x.write ?? '') : String(x)).trim().toUpperCase();
-        if (keyNow === '03/07' && getLabel(choice) === 'ESTUDI') {
-            const v = await pickEstudiVariant();
-            if (!v) return;
-            if (ST.nameHost) writeHostValue(ST.nameHost, v.write);
-            ST.lastTextName = v.write;
-            ST.lastNameKey = v.key;
-            applyComm();
-            return;
+        const pickedLabel = (typeof choice === 'object'
+                             ? (choice.label ?? choice.write ?? '')
+                             : String(choice)).trim().toUpperCase();
+
+        if (keyNow === '03/07' && pickedLabel === 'ESTUDI') {
+            const v = await pickEstudiVariant(); // 打开二级弹窗
+            if (!v) return; // 取消就退出
+            // 用二级选择的结果覆盖
+            const finalWrite = v.write ?? v.label ?? '';
+            const finalKey = v.key ?? finalWrite;
+
+            if (ST.nameHost) writeHostValue(ST.nameHost, finalWrite);
+            ST.lastTextName = finalWrite;
+            ST.lastNameKey = finalKey;
+
+            requestApplyComm();
+            return; // 二级路径到此结束，避免继续走一级写入
         }
 
-        // Otras opciones siguen la lógica original
+
+
+        if (choice == null) return;
         const writeText = (typeof choice === 'object') ? (choice.write ?? choice.label ?? '') : choice;
         const nameKey = (typeof choice === 'object') ? (choice.key ?? writeText) : writeText;
         if (ST.nameHost) writeHostValue(ST.nameHost, writeText);
         ST.lastTextName = writeText;
         ST.lastNameKey = nameKey;
-        applyComm();
+        requestApplyComm();
     }, true);
 
-    // 统一的清理函数：当 skipSubtipo=true 时，只清理 Nombre/Comunicación 与相关状态；不改 Subtipo/Tipo
-    async function clearTipoDependents(skipSubtipo = false) {
-        // 状态
-        if (!skipSubtipo) {
-            ST.subtipo = null;
-        }
-        ST.lastKeyName = null;
-        ST.lastTextName = '';
-        ST.lastNameKey = null;
-        ST.lastKeyComm = null;
-        ST.lastTextComm = '';
-        ST.noProcShownKey = null;
-        ST._lastHadRule = null;
-
-        // Hosts
-        ensurePickHosts();
-        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input','lightning-input-field']);
-        ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text','lightning-input-field']);
-
-        // 只在不跳过 subtipo 时才清空 Subtipo（保持原行为）
-        if (!skipSubtipo && ST.subtipoHost) {
-            try {
-                ST.subtipoHost.value = '';
-                ST.subtipoHost.dispatchEvent(new CustomEvent('change', { detail:{ value:'' }, bubbles:true, composed:true }));
-                ST.subtipoHost.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
-            } catch(_) {}
-        }
-
-        // 清空 Nombre & Comunicación —— 这是你想复用的核心
-        if (ST.nameHost) writeHostValue(ST.nameHost, '');
-        if (ST.commHost) writeHostValue(ST.commHost, '');
-
-        // 关闭辅助 UI
-        ST.lockNameOnce = false;
-        ST.modalOpen = false;
-        ST.choosing = false;
-        destroyPicker();
-    }
-
-
-
-    async function resetSubtipoOnly() {
-        ensurePickHosts();
-
-        ST.subtipo = null;
-        ST._lastHadRule = null;
-        ST.noProcShownKey = null;
-
-        if (ST.subtipoHost) {
-            try {
-                ST.subtipoHost.value = '';
-                ST.subtipoHost.dispatchEvent(new CustomEvent('change', { detail:{ value:'' }, bubbles:true, composed:true }));
-                ST.subtipoHost.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
-            } catch (_) {}
-        }
-    }
-
-
-
-    function onPickChange(e){
+    async function onPickChange(e){
         const path = e.composedPath?.() || [];
         const host = path.find(n => n && n.tagName === 'LIGHTNING-COMBOBOX');
         if (!host) return;
@@ -1036,7 +974,7 @@
 
         if (label === 'Tipo') {
             ST.tipo = val;
-            clearTipoDependents(); // ← limpia Subtipo, Nombre y Comunicación
+            await resetFields(3);
             return;
         }
 
@@ -1045,7 +983,7 @@
             ST._lastHadRule = null;
             ST.noProcShownKey = null;
             applyName();
-            applyComm();
+            requestApplyComm();
         }
     }
 
@@ -1074,7 +1012,6 @@
         document.addEventListener('change', onPickChange, true);
     }
 
-    // Corregir includes
     (function monitorNewPrereqPage(){
         let lastUrl = location.href;
         const CHECK_INTERVAL = 800;
@@ -1088,7 +1025,7 @@
                     setTimeout(() => {
                         ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
                         applyName();
-                        applyComm();
+                        requestApplyComm();
                     }, 400);
                 } else {
                     resetFormState();
@@ -1096,6 +1033,7 @@
             }
         }, CHECK_INTERVAL);
     })();
+
     if (document.readyState === 'complete' || document.readyState === 'interactive') install();
     else document.addEventListener('DOMContentLoaded', install, { once:true });
 })();
