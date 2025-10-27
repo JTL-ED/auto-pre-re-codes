@@ -2,7 +2,7 @@
 // @name         NEW-Pre-requisito
 // @namespace    https://your-space.example
 // @version      1.3.1
-// @description  solucionar modal ventana
+// @description  solucionar modal ventana, diferencia EDIT (desactiva nada) y NEW
 // @match        https://*.lightning.force.com/*
 // @match        https://*.salesforce.com/*
 // @author       Jiatai + Carles + GPT
@@ -912,6 +912,8 @@
         }
 
         const key = buildKey2(ST.tipo, ST.subtipo);
+        if (!ST.tipo && ST.tipoHost) { ST.tipo = ST.tipoHost.value || ''; }
+        // 现在再用 ST.tipo/ST.subtipo 计算 key
         const rule = NAME_RULES[key];
         const isMulti = Array.isArray(rule);
 
@@ -967,6 +969,7 @@
         const path = e.composedPath?.() || [];
         const host = path.find(n => n && n.tagName === 'LIGHTNING-COMBOBOX');
         if (!host) return;
+        ensurePickHosts(); // 确保能读到当前 combo
 
         const label = host.label || host.getAttribute?.('label') || '';
         const val = ('value' in host) ? host.value : null;
@@ -980,6 +983,8 @@
 
         if (label === 'Subtipo') {
             ST.subtipo = val;
+            // EDIT 场景里常见：此时 ST.tipo 还未初始化，兜底从 DOM 取一次
+            if (!ST.tipo && ST.tipoHost) ST.tipo = ST.tipoHost.value || '';
             ST._lastHadRule = null;
             ST.noProcShownKey = null;
             applyName();
@@ -1023,7 +1028,14 @@
                 if (href.includes('/lightning/o/Prerequisite__c/new') || href.includes('/lightning/r/Prerequisite__c/')) {
                     resetFormState();
                     setTimeout(() => {
-                        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
+                        //ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
+                        ensurePickHosts();
+                        // 读取页面上已选的 Tipo/Subtipo（EDIT 场景很关键）
+                        if (ST.tipo == null && ST.tipoHost)     ST.tipo    = ST.tipoHost.value || '';
+                        if (ST.subtipo == null && ST.subtipoHost) ST.subtipo = ST.subtipoHost.value || '';
+
+                        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input','lightning-input-field']);
+                        ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text','lightning-input-field']);
                         applyName();
                         requestApplyComm();
                     }, 400);
