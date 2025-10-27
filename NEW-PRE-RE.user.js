@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         NEW-Pre-requisito
-// @namespace    https://your-space.example
-// @version      1.3.1
-// @description  solucionar modal ventana, diferencia EDIT (desactiva nada) y NEW
+// @namespace    https://accesosede.my.salesforce.com/
+// @version      1.4.0
+// @description  solucionar modal ventana, diferencia EDIT (desactiva todas las funciones) y NEW (manteniendo todas las funciones)
 // @match        https://*.lightning.force.com/*
 // @match        https://*.salesforce.com/*
 // @author       Jiatai + Carles + GPT
@@ -51,6 +51,11 @@
 
     const NAME_LABEL_RX = /Nombre del Pre-?requisito/i;
     const COMM_LABEL_RX = /Comunicaci[oó]n al cliente\s*\(push\)/i;
+    // Detectores de contexto (URL)
+    const RX_NEW = /\/lightning\/o\/Prerequisite__c\/new(?:\?|$)/i;
+    const RX_EDIT = /\/lightning\/r\/Prerequisite__c\/[^/]+\/edit(?:\?|$)/i;
+    const RX_VIEW = /\/lightning\/r\/Prerequisite__c\/[^/]+\/view(?:\?|$)/i;
+
 
     let COMM_PENDING = false;
     let COMM_DEBOUNCE_T = null;
@@ -87,6 +92,10 @@
         preNameOverride: null,
         noProcShownKey: null,
         _lastHadRule: null,
+        // dentro de const ST = { ... }
+        mode: 'view', // 'new' | 'edit' | 'view'
+        canAutofill: false, // permiso para que applyName/applyComm actúen
+
     };
 
     const ESTUDI_TARGET = { tipo: '03', subtipo: '07' };
@@ -158,6 +167,7 @@
     async function pickEstudiVariant() {
         const sorted = [...ESTUDI_VARIANTS].sort((a,b) => collator.compare(a.label||'', b.label||''));
         await resetFieldsDeferred(2);
+        await delay(100);
         return await showChoiceModal('Seleccione Pre-requisito (ESTUDI)', sorted);
     }
 
@@ -252,12 +262,6 @@
             return false;
         }
     }
-
-
-
-
-
-
 
     // —— Builder de modal genérico —— //
     async function showModal({ title, bodyHTML, actions }) {
@@ -356,6 +360,7 @@
                 // reset
                 ST.modalOpen = false;
                 ST.choosing = false;
+                ST.canAutofill = true;
                 // 如果有挂起的 applyComm 请求，这里补一次（带防抖）
                 if (typeof COMM_PENDING !== 'undefined' && COMM_PENDING) requestApplyComm();
                 resolve(val ?? null);
@@ -520,6 +525,9 @@
     }
 
     function openNamePickerOnDemand(){
+        if (document.getElementById('__af_name_picker_ephemeral__')) destroyPicker();
+
+        if (ST.mode !== 'new') return;
         if (!ST.nameHost) return;
         destroyPicker();
 
@@ -587,6 +595,7 @@
                         ST.lastTextName = entry.write;
                         ST.lastNameKey = entry.key;
                     }
+                    ST.canAutofill = true;
                     requestApplyComm();
                     destroyPicker();
                 }, 180);
@@ -646,7 +655,7 @@
 
                         ST.nameHost = findHostByLabel(NAME_LABEL_RX, ['lightning-input']) || ST.nameHost;
                         if (ST.nameHost) writeHostValue(ST.nameHost, 'PART');
-
+                        ST.canAutofill = true;
                         requestApplyComm();
                         destroyPicker();
                     }, 180);
@@ -689,7 +698,7 @@
 
                     ST.nameHost = findHostByLabel(NAME_LABEL_RX, ['lightning-input']) || ST.nameHost;
                     if (ST.nameHost) writeHostValue(ST.nameHost, v.write);
-
+                    ST.canAutofill = true;
                     requestApplyComm();
                     destroyPicker();
                 }, 180);
@@ -733,14 +742,16 @@
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('keydown', onKey, true);
     }
+
     let EXEC_TOKEN = 0;
     const nextToken = () => (++EXEC_TOKEN);
-
-
     const applyName = (() => {
         let t=null;
         return async () => {
+            if (ST.mode !== 'new') return;
+
             if (ST.modalOpen || ST.choosing) return;
+            if (!ST.canAutofill && !ST.lockNameOnce && !ST.preNameOverride) return;
             if (!ST.subtipo) return;
             clearTimeout(t);
             t = setTimeout(async () => {
@@ -807,7 +818,10 @@
     const applyComm = (() => {
         let t=null;
         return async () => {
+            if (ST.mode !== 'new') return;
+
             if (ST.modalOpen || ST.choosing) return;
+            if (!ST.canAutofill && !ST.lockNameOnce && !ST.preNameOverride) return;
             clearTimeout(t);
             t = setTimeout(async () => {
                 if (ST.modalOpen || ST.choosing) return; // 先 guard
@@ -843,6 +857,7 @@
     })();
 
     function onFocusIn(e){
+        if (ST.mode !== 'new') return;
         const path = e.composedPath?.() || [];
         const tag = n => n && n.tagName;
         const inputHost = path.find(n => tag(n)==='LIGHTNING-INPUT');
@@ -867,6 +882,9 @@
         const path = e.composedPath?.() || [];
         if (path.some(n => n && n.id === '__af_name_picker_ephemeral__')) return;
 
+        // NO abrir el picker si no estamos en "nuevo"
+        if (ST.mode !== 'new') return;
+
         const hit = path.find(n => n && n.tagName === 'LIGHTNING-INPUT');
         const lab = hit ? (hit.label || hit.getAttribute?.('label') || '') : '';
         if (hit && NAME_LABEL_RX.test(lab)) {
@@ -876,6 +894,7 @@
     }, true);
 
     document.addEventListener('pointerdown', (e) => {
+        if (ST.mode !== 'new') return;
         const path = e.composedPath?.() || [];
         const combo = path.find(n => n && n.tagName === 'LIGHTNING-COMBOBOX');
         if (!combo) return;
@@ -888,6 +907,7 @@
     }, true);
 
     document.addEventListener('click', async (e) => {
+        if (ST.mode !== 'new') return;
         if (!ST._subtipoListOpen) return;
 
         const path = e.composedPath?.() || [];
@@ -912,8 +932,6 @@
         }
 
         const key = buildKey2(ST.tipo, ST.subtipo);
-        if (!ST.tipo && ST.tipoHost) { ST.tipo = ST.tipoHost.value || ''; }
-        // 现在再用 ST.tipo/ST.subtipo 计算 key
         const rule = NAME_RULES[key];
         const isMulti = Array.isArray(rule);
 
@@ -949,12 +967,10 @@
             if (ST.nameHost) writeHostValue(ST.nameHost, finalWrite);
             ST.lastTextName = finalWrite;
             ST.lastNameKey = finalKey;
-
+            ST.canAutofill = true;
             requestApplyComm();
             return; // 二级路径到此结束，避免继续走一级写入
         }
-
-
 
         if (choice == null) return;
         const writeText = (typeof choice === 'object') ? (choice.write ?? choice.label ?? '') : choice;
@@ -966,10 +982,10 @@
     }, true);
 
     async function onPickChange(e){
+        if (ST.mode !== 'new') return;
         const path = e.composedPath?.() || [];
         const host = path.find(n => n && n.tagName === 'LIGHTNING-COMBOBOX');
         if (!host) return;
-        ensurePickHosts(); // 确保能读到当前 combo
 
         const label = host.label || host.getAttribute?.('label') || '';
         const val = ('value' in host) ? host.value : null;
@@ -977,16 +993,16 @@
 
         if (label === 'Tipo') {
             ST.tipo = val;
+            ST.canAutofill = true;
             await resetFields(3);
             return;
         }
 
         if (label === 'Subtipo') {
             ST.subtipo = val;
-            // EDIT 场景里常见：此时 ST.tipo 还未初始化，兜底从 DOM 取一次
-            if (!ST.tipo && ST.tipoHost) ST.tipo = ST.tipoHost.value || '';
             ST._lastHadRule = null;
             ST.noProcShownKey = null;
+            ST.canAutofill = true;
             applyName();
             requestApplyComm();
         }
@@ -1008,6 +1024,7 @@
         ST.lockNameOnce = false;
         ST._lastHadRule = null;
         ST.noProcShownKey = null;
+        ST.pickerEl = null; // por si acaso que actica choicemodal en otro sitio
         destroyPicker();
         document.getElementById('__af_modal_root__')?.remove();
     }
@@ -1025,25 +1042,49 @@
             const href = location.href;
             if (href !== lastUrl) {
                 lastUrl = href;
-                if (href.includes('/lightning/o/Prerequisite__c/new') || href.includes('/lightning/r/Prerequisite__c/')) {
-                    resetFormState();
-                    setTimeout(() => {
-                        //ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input']);
-                        ensurePickHosts();
-                        // 读取页面上已选的 Tipo/Subtipo（EDIT 场景很关键）
-                        if (ST.tipo == null && ST.tipoHost)     ST.tipo    = ST.tipoHost.value || '';
-                        if (ST.subtipo == null && ST.subtipoHost) ST.subtipo = ST.subtipoHost.value || '';
 
-                        ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input','lightning-input-field']);
-                        ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text','lightning-input-field']);
-                        applyName();
-                        requestApplyComm();
-                    }, 400);
-                } else {
-                    resetFormState();
-                }
+                // 1) Limpia solo estado interno (NO borra campos del form)
+                resetFormState();
+
+                // 2) Modo por URL
+                if (RX_NEW.test(href)) ST.mode = 'new';
+                else if (RX_EDIT.test(href)) ST.mode = 'edit';
+                else if (RX_VIEW.test(href)) ST.mode = 'view';
+                else ST.mode = 'view';
+
+                // 3) Localiza hosts y decide si autocompletar
+                setTimeout(() => { // Todos los que están comentado son para desactivar las logicas en pagina de EDIT, en pagina NEW mantiene todas las funciones.
+                    //ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input','lightning-input-field']);
+                    //ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text','lightning-input-field']);
+
+                    //const nameVal = (ST.nameHost && 'value' in ST.nameHost) ? (ST.nameHost.value || '').trim() : '';
+                    //const commVal = (ST.commHost && 'value' in ST.commHost) ? (ST.commHost.value || '').trim() : '';
+
+                    // Política: en "nuevo" siempre; en "editar" solo si ambos están vacíos
+                    //if (ST.mode === 'new') {
+                    //    ST.canAutofill = true;
+                    //} else if (ST.mode === 'edit') {
+                    //    ST.canAutofill = (nameVal === '' && commVal === '');
+                    //} else {
+                    //    ST.canAutofill = false;
+                    //}
+
+                    // 4) Si procede, dispara cálculos (sin limpiar campos)
+                    //if (ST.canAutofill) {
+                    //    applyName();
+                    //    requestApplyComm();
+                    //}
+
+                    if (ST.mode !== 'new') { ST.canAutofill = false; return; }
+                    ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input','lightning-input-field']);
+                    ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text','lightning-input-field']);
+                    ST.canAutofill = true;
+                    applyName();
+                    requestApplyComm();
+                }, 400);
             }
         }, CHECK_INTERVAL);
+
     })();
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') install();
