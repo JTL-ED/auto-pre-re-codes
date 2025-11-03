@@ -1,14 +1,16 @@
 // ==UserScript==
-// @name         NEW-Pre-requisito
+// @name         NEW-Pre-requisito v4
 // @namespace    https://accesosede.my.salesforce.com/
-// @version      1.4.0
-// @description  solucionar modal ventana, diferencia EDIT (desactiva todas las funciones) y NEW (manteniendo todas las funciones)
+// @version      1.4.1
+// @description  solucionar modal ventana, diferencia EDIT (desactiva todo) y NEW
 // @match        https://*.lightning.force.com/*
 // @match        https://*.salesforce.com/*
 // @author       Jiatai + Carles + GPT
 // @run-at       document-idle
 // @grant        none
+// @noframes
 // ==/UserScript==
+
 
 (function() {
     const MODAL_WHITELIST = new Set(['01/01', '01/07','03/07']);
@@ -24,7 +26,7 @@
         '01/21': 'ACTA',
         '02/08': 'ESCREIX',
         '03/09': 'CP2',
-        '03/11': {label: 'PART', write: 'PART', key: 'PART_Permiso' },
+        '03/11': {label: 'PART', write: 'PART', key: 'PART_Permisos' },
         '03/13': 'PER',
         '03/14': 'APS',
         '03/07': ['OBRA BACKLOG', 'CP1', 'SUPEDITAT', 'CIVICOS', 'ESTUDI', 'AGP', 'CTR', 'FASES', 'TRAÇAT', 'CE'],
@@ -33,19 +35,21 @@
     const COMM_RULES_3 = {
         '01/01/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
         '01/01/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
-        '01/07/FASE OBRA': '',
+
         '01/07/ANULAR': 'Pendiente aportación carta de anulación, justificante de pago y certificado de titularidad bancaria.',
+        '01/07/FASE OBRA': '',
         '01/07/PTE ACT CLIENT': 'Temporalmente, la gestión del expediente queda suspendida a la espera de la aportación por su parte de los documentos que se le han requerido.',
     };
 
     const COMM_RULES_2 = {
         '01/04': 'En breve les serán requeridos los documentos necesarios para realizar la cesión del CT/CM.',
         '01/06': 'Pendiente instalacion de la Caja General de Protección/Caja de Protección y Medida.',
-        '01/08': 'Pendiente de pago del sobrecoste  indicado en las condiciones - técnico econòmicas remitidas.',
+        //'01/08': 'Pendiente de pago del sobrecoste  indicado en las condiciones - técnico econòmicas remitidas.',
         '01/18': 'Pendiente recibir información del espacio reservado para ubicar el CT/CM.',
         '01/19': 'En breve les serán requeridos los documentos necesarios para la cesión de las instalaciones.',
         '01/20': 'Pendiente recibir proyecto eléctrico para revisión.',
         '01/21': 'Una vez validado el proyecto eléctrico, tendrá que aportar permisos y autorizaciones concedidas, y cronograma de ejecución de obra para programar Acta de Lanzamiento.',
+
         '02/08': 'Pendiente de pago del sobrecoste  indicado en las condiciones - técnico econòmicas remitidas.',
     };
 
@@ -623,7 +627,7 @@
                 try {
                     const labelMap = {
                         'PART_Acciones': 'PART - Pendiente acciones cliente',
-                        'PART_Permiso':  'PART - Pendiente de permisos',
+                        'PART_Permisos':  'PART - Pendiente de permisos',
                     };
 
                     const variants = [];
@@ -731,13 +735,39 @@
 
         const onDocDown = (e) => {
             if (ST._insidePickerClick) return;
-            const path = e.composedPath?.() || [];
-            if (!path.includes(wrap) && !path.includes(ST.nameHost)) {
+
+            const wrap = document.getElementById('__af_name_picker_ephemeral__');
+            wrap.addEventListener('mousedown', () => {
+                ST._insidePickerClick = true;
+                queueMicrotask(() => { ST._insidePickerClick = false; });
+            }, true);
+
+            wrap.addEventListener('pointerdown', () => {
+                ST._insidePickerClick = true;
+                queueMicrotask(() => { ST._insidePickerClick = false; });
+            }, true);
+
+            if (!wrap) return;
+
+            // 1) Ignorar clicks en las barras de scroll del navegador
+            const onViewportScrollbar =
+                  (e.target === document.documentElement || e.target === document.body) &&
+                  (e.clientX >= window.innerWidth - 18 || e.clientY >= window.innerHeight - 18);
+            if (onViewportScrollbar) return;
+
+            // 2) Considerar "dentro" si el target está contenido en el panel
+            const insidePanel = wrap.contains(e.target);
+
+            // 3) Considerar "dentro" si el click parte del input de Nombre
+            const insideNameHost = !!(ST.nameHost && ST.nameHost.contains && ST.nameHost.contains(e.target));
+
+            if (!insidePanel && !insideNameHost) {
                 destroyPicker();
                 document.removeEventListener('mousedown', onDocDown, true);
                 document.removeEventListener('keydown', onKey, true);
             }
         };
+
         const onKey = (e) => { if (e.key === 'Escape') onDocDown(e); };
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('keydown', onKey, true);
@@ -1053,7 +1083,7 @@
                 else ST.mode = 'view';
 
                 // 3) Localiza hosts y decide si autocompletar
-                setTimeout(() => { // Todos los que están comentado son para desactivar las logicas en pagina de EDIT, en pagina NEW mantiene todas las funciones.
+                setTimeout(() => {
                     //ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input','lightning-input-field']);
                     //ST.commHost = ST.commHost || findHostByLabel(COMM_LABEL_RX, ['lightning-textarea','lightning-input-rich-text','lightning-input-field']);
 
