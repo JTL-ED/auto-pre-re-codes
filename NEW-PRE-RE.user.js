@@ -55,8 +55,9 @@
 
     const NAME_LABEL_RX = /Nombre del Pre-?requisito/i;
     const COMM_LABEL_RX = /Comunicaci[oó]n al cliente\s*\(push\)/i;
-    // Detectores de contexto (URL)
-    const RX_NEW = /\/lightning\/o\/Prerequisite__c\/new(?:\?|$)/i;
+    // Detectores de contexto (URL) //Create
+    const RX_NEW = /\/lightning\/cmp\/c__nnssCreatePrerequisito(?:\?|$)/i;
+
     const RX_EDIT = /\/lightning\/r\/Prerequisite__c\/[^/]+\/edit(?:\?|$)/i;
     const RX_VIEW = /\/lightning\/r\/Prerequisite__c\/[^/]+\/view(?:\?|$)/i;
 
