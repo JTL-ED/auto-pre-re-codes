@@ -44,8 +44,8 @@
     const COMM_RULES_3 = {
         '01/01/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
         '01/01/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
-        '01/01/DIVISIO': 'Pendiente que nos haga llegar la nueva estructura del edificio para el reparto de la potencia.',
-        '01/01/REHABILITACIO': 'Pendiente que nos haga llegar la División Horizontal para poder finalizar el expediente.',
+        '01/01/DIVISIO': 'Pendiente que nos haga llegar la División Horizontal para poder finalizar el expediente.',
+        '01/01/REHABILITACIO': 'Pendiente que nos haga llegar la nueva estructura del edificio para el reparto de la potencia.',
         //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
         '01/07/ANULAR': 'Pendiente aportación carta de anulación, justificante de pago y certificado de titularidad bancaria.',
         '01/07/FASE OBRA': '',
