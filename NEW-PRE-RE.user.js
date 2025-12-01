@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         NEW-Pre-requisito v4
+// @name         NEW-Pre-requisito
 // @namespace    https://accesosede.my.salesforce.com/
 // @version      1.4.1
 // @description  solucionar modal ventana, diferencia EDIT (desactiva todo) y NEW / CREATE
