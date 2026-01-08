@@ -357,7 +357,7 @@
             // En CREATE no hay tabla: no reescaneamos ni tocamos cache.
             if (isCreatePrerequisitoCmpUrl()) {
                 restoreCacheForRecord(recordId);
-                console.log("[Fecha real fin] Key:", `${ONLY_OBJECT_API}:${recordId}`, "| CREATE: usando cache:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null);
+                //console.log("[Fecha real fin] Key:", `${ONLY_OBJECT_API}:${recordId}`, "| CREATE: usando cache:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null);
                 return;
             }
 
@@ -387,7 +387,7 @@
 
                 if (best.foundTable && best.dateStr) {
                     setCacheForRecord(recordId, best.dateStr);
-                    console.log("[Fecha real fin] Key:", keyForLog, "| Ultima:", best.dateStr, "| origen:", reason);
+                    //console.log("[Fecha real fin] Key:", keyForLog, "| Ultima:", best.dateStr, "| origen:", reason);
                     attachTableObserver(best.table);
                     return;
                 }
@@ -399,10 +399,10 @@
                     const raw = sessionStorage.getItem(getStorageKey(recordId));
                     const shown = (raw === NULL_MARK) ? null : (raw || null);
 
-                    console.log("[Fecha real fin] Key:", keyForLog,
-                                "| No hay fecha -> cache a null",
-                                "| origen:", reason,
-                                "| cache por rid:", shown);
+                    //console.log("[Fecha real fin] Key:", keyForLog,
+                    //            "| No hay fecha -> cache a null",
+                    //            "| origen:", reason,
+                    //            "| cache por rid:", shown);
                     attachTableObserver(best.table);
                     return;
                 }
@@ -410,7 +410,7 @@
                 if (attempts < SCAN_MAX_ATTEMPTS) {
                     setTimeout(attempt, SCAN_DELAY_MS);
                 } else {
-                    console.log("[Fecha real fin] Key:", keyForLog, "| No se ha encontrado la tabla | origen:", reason, "| cache se mantiene:", sessionStorage.getItem(getStorageKey(recordId)) || null);
+                    //console.log("[Fecha real fin] Key:", keyForLog, "| No se ha encontrado la tabla | origen:", reason, "| cache se mantiene:", sessionStorage.getItem(getStorageKey(recordId)) || null);
                 }
             }
 
@@ -487,12 +487,11 @@
                 //            "| last:", valLast || null,
                 //            "| window:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null
 
-                console.log("[Control Plazos][CACHE] FINAL:", window.CONTROL_PLAZOS_FECHA_REAL_FIN
-                           );
+                //console.log("[Control Plazos][CACHE] FINAL:", window.CONTROL_PLAZOS_FECHA_REAL_FIN);
             }, DEBUG_CACHE_EVERY_MS);
         }
 
-        console.log("[Control Plazos] Script Fecha real fin cargado (persistente, cache por recordId, modal ok)");
+        //console.log("[Control Plazos] Script Fecha real fin cargado (persistente, cache por recordId, modal ok)");
     })();
 
 
@@ -669,7 +668,7 @@
 
                     // Solo log si ha cambiado el valor respecto al que ya habia
                     if (valor !== prev) {
-                        console.log("[Control Plazos] Key:", keyForLog, "| Fecha:", valor, "| origen:", reason);
+                        //console.log("[Control Plazos] Key:", keyForLog, "| Fecha:", valor, "| origen:", reason);
                     }
 
                     return;
@@ -703,14 +702,11 @@
 
         if (DEBUG_CACHE_EVERY_MS > 0) {
             setInterval(() => {
-                console.log(
-                    "[Control Plazos][CACHE] ACEPT:",
-                    window.CONTROL_PLAZOS_FECHA_ACEPTACION
-                );
+                //console.log("[Control Plazos][CACHE] ACEPT:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
             }, DEBUG_CACHE_EVERY_MS);
         }
 
-        console.log("[Control Plazos] Script Fecha de Aceptacion cargado (persistente)");
+        //console.log("[Control Plazos] Script Fecha de Aceptacion cargado (persistente)");
     })();
 
 
@@ -739,8 +735,20 @@
         // Festivos (editar a mano). Formato: "YYYY-MM-DD"
         // =========================================================
         const CP_HOLIDAYS = [
-            // "2026-01-01",
-            // "2026-01-06",
+            "2026-01-01", // Año Nuevo
+            "2026-01-06", // Reyes
+            "2026-04-03", // Viernes Santo
+            "2026-04-06", // Lunes de Pascua Florida
+            "2026-05-01", // Fiesta del Trabajo
+            "2026-05-25", // Lunes de Pascua Granada
+            "2026-06-24", // San Juan
+            "2026-08-15", // La Asunción
+            "2026-09-11", // Diada Nacional de Cataluña
+            "2026-09-24", // Mare de Déu de la Mercè
+            "2026-10-12", // Día Nacional de España
+            "2026-12-08", // La Inmaculada
+            "2026-12-25", // Navidad
+            "2026-12-26" // San Esteban
         ];
 
         // Opciones del popover para Expected_date__c
@@ -1294,7 +1302,7 @@
             const info = getBaseDateForExpected(expectedInputEl);
 
             if (!info.base) {
-                console.log("[expected_date] No se puede calcular: Expected y Start vacios o invalidos.");
+                //console.log("[expected_date] No se puede calcular: Expected y Start vacios o invalidos.");
                 return;
             }
 
@@ -1309,7 +1317,7 @@
             suppressNextOpen = true;
             writeDateTextValue(expectedInputEl, txt);
 
-            console.log("[expected_date] Base:", formatDateDDMMYYYY(info.base), "origen:", info.source, "=>", kind, value, "=>", txt);
+            //console.log("[expected_date] Base:", formatDateDDMMYYYY(info.base), "origen:", info.source, "=>", kind, value, "=>", txt);
         }
 
 
@@ -1369,14 +1377,14 @@
                 buttons.bAceptacion.addEventListener("click", () => {
                     const v = window.CONTROL_PLAZOS_FECHA_ACEPTACION || null;
                     if (!v) {
-                        console.log("[start_date] Fecha de Aceptacion: cache null");
+                        //console.log("[start_date] Fecha de Aceptacion: cache null");
                         pickerOpen = false;
                         cleanup();
                         return;
                     }
                     suppressNextOpen = true;
                     writeDateTextValue(inputEl, v);
-                    console.log("[start_date] Rellenado con Fecha de Aceptacion:", v);
+                    //console.log("[start_date] Rellenado con Fecha de Aceptacion:", v);
                     pickerOpen = false;
                     cleanup();
                 });
@@ -1384,14 +1392,14 @@
                 buttons.bFinal.addEventListener("click", () => {
                     const v = window.CONTROL_PLAZOS_FECHA_REAL_FIN || null;
                     if (!v) {
-                        console.log("[start_date] Fecha Ultimo cierre PRE: cache null");
+                        //console.log("[start_date] Fecha Ultimo cierre PRE: cache null");
                         pickerOpen = false;
                         cleanup();
                         return;
                     }
                     suppressNextOpen = true;
                     writeDateTextValue(inputEl, v);
-                    console.log("[start_date] Rellenado con Fecha Ultimo cierre PRE:", v);
+                    //console.log("[start_date] Rellenado con Fecha Ultimo cierre PRE:", v);
                     pickerOpen = false;
                     cleanup();
                 });
