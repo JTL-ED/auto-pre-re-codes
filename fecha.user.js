@@ -1,8 +1,9 @@
 // ==UserScript==
-// @name         Control Plazos - Fecha real fin + Fecha aceptacion + UI fecha + pre (auto fecha)
+// @name         NEW-Pre-requisito
 // @namespace    sf-control-plazos
 // @version      1.2.6
-// @description  Integra dos funciones: (1) Ultima "Fecha real fin" desde related list Pre-requisitos (Constructive_project__c) con cache por recordId y soporte CMP create. (2) "Fecha de Aceptacion" (Record__c) con la misma logica original 1.3.1 (cache unico persistente).
+// @description  Creación prerrequisito, se diveden en 4 modulos.
+// @description  modulo = variable global, fecha aceptacion, fecha ultimo cierre prerrequisito, UI rellenar fecha manual, prerrequisito con autorrelleno de fecha.
 // @match        https://*.lightning.force.com/*
 // @match        https://*.my.salesforce.com/*
 // @run-at       document-idle
@@ -11,10 +12,279 @@
 
 (function () {
     "use strict";
+    // ------------------------------------------------------------------------------------------------------------------------
+    // MODULO 0: Festivos compartidos (un solo origen)
+    // ------------------------------------------------------------------------------------------------------------------------
+    window.CP_HOLIDAYS = window.CP_HOLIDAYS || [
+        "2026-01-01", // Año Nuevo
+        "2026-01-06", // Reyes
+        "2026-04-03", // Viernes Santo
+        "2026-04-06", // Lunes de Pascua Florida
+        "2026-05-01", // Fiesta del Trabajo
+        "2026-05-25", // Lunes de Pascua Granada
+        "2026-06-24", // San Juan
+        "2026-08-15", // La Asunción
+        "2026-09-11", // Diada Nacional de Cataluña
+        "2026-09-24", // Mare de Déu de la Mercè
+        "2026-10-12", // Día Nacional de España
+        "2026-12-08", // La Inmaculada
+        "2026-12-25", // Navidad
+        "2026-12-26" // San Esteban
+    ];
 
-    // ------------------------------------------------------------
-    // MODULO 1: Fecha Ultima Fecha real fin (Constructive_project__c)
-    // ------------------------------------------------------------
+    window.CP_DEBUG = window.CP_DEBUG || {
+        aceptacionLog: false, //true para activar log
+        aceptacionEveryMs: 0, // 0 = desactivado, 5000 ms retard para imprimir
+
+        realFinLog: false,
+        realFinEveryMs: 0,
+    };
+
+    window.CP_FLAGS = window.CP_FLAGS || {
+        enableStartDatePopover: false,
+        enableExpectedDatePopover: true,
+    };
+
+    function buildHolidaySetGlobal() {
+        const arr = Array.isArray(window.CP_HOLIDAYS) ? window.CP_HOLIDAYS : [];
+        const set = new Set();
+        for (const s of arr) {
+            if (typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.trim())) set.add(s.trim());
+        }
+        return set;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------------------
+    // MODULO 1: Fecha de Aceptacion (Record__c)
+    // ------------------------------------------------------------------------------------------------------------------------
+
+    (function () {
+        const LABEL = "Fecha de Aceptación";
+        const ONLY_OBJECT_API = "Record__c";
+        const STORAGE_KEY = "CONTROL_PLAZOS_FECHA_ACEPTACION";
+
+        // Debug
+        const DEBUG_CACHE_EVERY_MS = window.CP_DEBUG?.aceptacionEveryMs ?? 0;
+        const DEBUG_LOG = !!window.CP_DEBUG?.aceptacionLog;
+
+        // RESTAURAR CACHE tras F5
+        if (sessionStorage.getItem(STORAGE_KEY)) {
+            window.CONTROL_PLAZOS_FECHA_ACEPTACION = sessionStorage.getItem(STORAGE_KEY);
+            //console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
+            if (DEBUG_LOG) console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
+
+        } else {
+            window.CONTROL_PLAZOS_FECHA_ACEPTACION = null;
+        }
+
+        const clean = s => s?.replace(/\u00A0/g, " ")
+        .replace(/[ \t\r\n]+/g, " ")
+        .trim() || "";
+
+        function isVisible(el) {
+            if (!el || el.nodeType !== 1) return false;
+            if (el.closest('[aria-hidden="true"]')) return false;
+            const r = el.getClientRects();
+            return r && r.length > 0;
+        }
+
+        function* walkDeep(root, cap = 20000) {
+            const stack = [root];
+            const seen = new Set();
+            let left = cap;
+
+            while (stack.length && left-- > 0) {
+                const n = stack.pop();
+                if (!n || seen.has(n)) continue;
+                seen.add(n);
+
+                yield n;
+
+                // ShadowRoot
+                try {
+                    if (n.shadowRoot) stack.push(n.shadowRoot);
+                } catch (_) {}
+
+                // DOM normal
+                const ch = n.children || n.childNodes;
+                if (ch) for (let i = 0; i < ch.length; i++) stack.push(ch[i]);
+            }
+        }
+
+        function deepQueryAll(root, selector, cap = 20000) {
+            const out = [];
+            for (const n of walkDeep(root, cap)) {
+                try {
+                    if (n.querySelectorAll) {
+                        const found = n.querySelectorAll(selector);
+                        for (const el of found) out.push(el);
+                    }
+                } catch (_) {}
+            }
+            return out;
+        }
+
+        function isRecordPageByUrl() {
+            return /\/lightning\/r\/Record__c\/[a-zA-Z0-9]{15,18}\/view/i.test(location.href);
+        }
+
+        function getRecordIdFromUrl() {
+            const m = location.href.match(/\/lightning\/r\/Record__c\/([a-zA-Z0-9]{15,18})\/view/i);
+            return m ? m[1] : null;
+        }
+
+        function getVisibleTabPanel() {
+            return (
+                document.querySelector('.slds-tabs_default__content[aria-hidden="false"]') ||
+                document.querySelector('.slds-tabs_scoped__content[aria-hidden="false"]') ||
+                document.querySelector('[role="tabpanel"][aria-hidden="false"]') ||
+                null
+            );
+        }
+
+        function getActiveRoot() {
+            const tabPanel = getVisibleTabPanel();
+            if (tabPanel) return tabPanel;
+            return document;
+        }
+
+        function getActiveRecordIdFromDom() {
+            const root = getActiveRoot();
+
+            const layout = root.querySelector('records-record-layout');
+            if (layout) {
+                const rid = layout.getAttribute('record-id') ||
+                      layout.getAttribute('data-recordid') ||
+                      layout.getAttribute('data-record-id');
+                if (rid) return rid;
+            }
+
+            const attrs = ['[record-id]', '[data-recordid]', '[data-record-id]'];
+            for (const sel of attrs) {
+                const el = root.querySelector(sel);
+                if (el) {
+                    const rid = el.getAttribute('record-id') ||
+                          el.getAttribute('data-recordid') ||
+                          el.getAttribute('data-record-id');
+                    if (rid) return rid;
+                }
+            }
+
+            const a = root.querySelector('a[href*="/lightning/r/Record__c/"]');
+            if (a) {
+                const m = a.getAttribute("href")?.match(/\/Record__c\/([a-zA-Z0-9]{15,18})\/view/i);
+                if (m) return m[1];
+            }
+            return null;
+        }
+
+        function getUrlKey() {
+            const rid = getRecordIdFromUrl();
+            if (rid) return ONLY_OBJECT_API + ":" + rid;
+            return null;
+        }
+
+        function getActiveDomKey() {
+            const rid = getActiveRecordIdFromDom();
+            if (rid) return ONLY_OBJECT_API + ":" + rid;
+            return null;
+        }
+
+        function normLabel(s) {
+            return clean(s)
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "");
+        }
+
+        function readFechaAceptacion(root) {
+            const blocks = deepQueryAll(root, ".slds-form-element");
+            for (const el of blocks) {
+                if (!isVisible(el)) continue;
+
+                const lab = el.querySelector(".test-id__field-label, label");
+                if (!lab || !isVisible(lab)) continue;
+                if (normLabel(lab.textContent) !== normLabel(LABEL)) continue;
+
+                const valRoot = el.querySelector(".test-id__field-value, .slds-form-element__control");
+                if (!valRoot || !isVisible(valRoot)) continue;
+                return clean(valRoot.innerText || valRoot.textContent || "") || null;
+            }
+            return null;
+        }
+
+        let scanToken = 0;
+
+        function scanForCurrent(reason) {
+            const urlKey = getUrlKey();
+            const domKey = getActiveDomKey();
+            if (!urlKey && !domKey && !isRecordPageByUrl()) return;
+
+            const token = ++scanToken;
+            const keyForLog = domKey || urlKey || "Record__c:?";
+
+            let attempts = 0;
+            const maxAttempts = 12;
+            const delayMs = 700;
+
+            function attempt() {
+                if (token !== scanToken) return;
+
+                attempts++;
+                const valor = readFechaAceptacion(getActiveRoot());
+
+                if (valor) {
+                    const prev = window.CONTROL_PLAZOS_FECHA_ACEPTACION;
+
+                    // Actualiza cache (aunque sea el mismo valor)
+                    window.CONTROL_PLAZOS_FECHA_ACEPTACION = valor;
+                    sessionStorage.setItem(STORAGE_KEY, valor);
+
+                    // Solo log si ha cambiado el valor respecto al que ya habia
+                    if (DEBUG_LOG && valor !== prev) {
+                        console.log("[Control Plazos] Key:", keyForLog, "| Fecha:", valor, "| origen:", reason);
+                    }
+                    return;
+                }
+                if (attempts < maxAttempts) setTimeout(attempt, delayMs);
+            }
+            attempt();
+        }
+
+        let lastUrlKey = null;
+        let lastDomKey = null;
+
+        setInterval(() => {
+            const u = getUrlKey();
+            const d = getActiveDomKey();
+            if ((u && u !== lastUrlKey) || (d && d !== lastDomKey)) {
+                lastUrlKey = u;
+                lastDomKey = d;
+                scanForCurrent("cambio contexto");
+            }
+        }, 800);
+
+        setTimeout(() => {
+            lastUrlKey = getUrlKey();
+            lastDomKey = getActiveDomKey();
+            scanForCurrent("inicio");
+        }, 2000);
+
+        if (DEBUG_CACHE_EVERY_MS > 0) {
+            setInterval(() => {
+                console.log(
+                    "[Control Plazos][CACHE] ACEPT:",
+                    window.CONTROL_PLAZOS_FECHA_ACEPTACION
+                );
+            }, DEBUG_CACHE_EVERY_MS);
+        }
+        if (DEBUG_LOG) console.log("[Control Plazos] Script Fecha de Aceptacion cargado (persistente)");
+
+    })();
+
+    // ------------------------------------------------------------------------------------------------------------------------
+    // MODULO 2: Fecha Ultima Fecha real fin (Constructive_project__c)
+    // ------------------------------------------------------------------------------------------------------------------------
 
     (function () {
         const ONLY_OBJECT_API = "Constructive_project__c";
@@ -25,7 +295,9 @@
         const STORAGE_KEY_PREFIX = "CONTROL_PLAZOS_FECHA_REAL_FIN:";
 
         // Debug
-        const DEBUG_CACHE_EVERY_MS = 5000;
+        const DEBUG_CACHE_EVERY_MS = window.CP_DEBUG?.realFinEveryMs ?? 0;
+        const DEBUG_LOG = !!window.CP_DEBUG?.realFinLog;
+
 
         // Poll de contexto (tabs internas de Salesforce / cambios de vista)
         const CONTEXT_POLL_MS = 800;
@@ -38,7 +310,6 @@
         const RESCAN_DEBOUNCE_MS = 350;
 
         const STORAGE_KEY_LAST = "CONTROL_PLAZOS_FECHA_REAL_FIN:__LAST__";
-
 
         function isAllowedUrl() {
             const p = location.pathname;
@@ -110,7 +381,6 @@
 
         }
 
-
         function restoreCacheForRecord(recordId) {
             const id18 = toId18(recordId) || recordId;
             const id15 = id18 ? id18.slice(0, 15) : null;
@@ -135,8 +405,6 @@
             window.CONTROL_PLAZOS_FECHA_REAL_FIN = v || null;
         }
 
-
-
         function getRecordIdFromUrl() {
             // 1) Caso normal: /lightning/r/Constructive_project__c/<id>/...
             let m = location.href.match(/\/lightning\/r\/Constructive_project__c\/([a-zA-Z0-9]{15,18})\//i);
@@ -158,8 +426,6 @@
 
             return null;
         }
-
-
 
         function getVisibleTabPanel() {
             return (
@@ -237,7 +503,6 @@
             return { foundTable: true, dateStr: formatDDMMYYYY(maxDate), table };
         }
 
-
         function toId18(id) {
             const s = (id || "").trim();
             if (s.length === 18) return s;
@@ -257,7 +522,6 @@
             return s + suffix;
         }
 
-
         function getStorageKey(recordId) {
             return STORAGE_KEY_PREFIX + recordId;
         }
@@ -266,15 +530,14 @@
             return /^\/lightning\/cmp\/c__nnssCreatePrerequisito$/.test(location.pathname);
         }
 
-
-
-
         // Evita que 2 escaneos en paralelo se pisen
         let scanToken = 0;
 
         // Debounce de reescaneo
         let rescanTimer = null;
+
         function requestRescan(reason) {
+            if (isCreatePrerequisitoCmpUrl()) return; // CREATE: no tiene sentido reescaneo
             if (rescanTimer) clearTimeout(rescanTimer);
             rescanTimer = setTimeout(() => scanForCurrent(reason), RESCAN_DEBOUNCE_MS);
         }
@@ -353,11 +616,13 @@
                 return;
             }
 
-
             // En CREATE no hay tabla: no reescaneamos ni tocamos cache.
             if (isCreatePrerequisitoCmpUrl()) {
                 restoreCacheForRecord(recordId);
-                console.log("[Fecha real fin] Key:", `${ONLY_OBJECT_API}:${recordId}`, "| CREATE: usando cache:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null);
+                if (DEBUG_LOG) {
+                    console.log("[Fecha real fin] Key:", `${ONLY_OBJECT_API}:${recordId}`, "| CREATE: usando cache:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null);
+                }
+
                 return;
             }
 
@@ -387,7 +652,9 @@
 
                 if (best.foundTable && best.dateStr) {
                     setCacheForRecord(recordId, best.dateStr);
-                    console.log("[Fecha real fin] Key:", keyForLog, "| Ultima:", best.dateStr, "| origen:", reason);
+                    if (DEBUG_LOG){
+                        console.log("[Fecha real fin] Key:", keyForLog, "| Ultima:", best.dateStr, "| origen:", reason);
+                    }
                     attachTableObserver(best.table);
                     return;
                 }
@@ -399,10 +666,12 @@
                     const raw = sessionStorage.getItem(getStorageKey(recordId));
                     const shown = (raw === NULL_MARK) ? null : (raw || null);
 
-                    console.log("[Fecha real fin] Key:", keyForLog,
-                                "| No hay fecha -> cache a null",
-                                "| origen:", reason,
-                                "| cache por rid:", shown);
+                    if (DEBUG_LOG){
+                        console.log("[Fecha real fin] Key:", keyForLog,
+                                    "| No hay fecha -> cache a null",
+                                    "| origen:", reason,
+                                    "| cache por rid:", shown);
+                    }
                     attachTableObserver(best.table);
                     return;
                 }
@@ -410,13 +679,13 @@
                 if (attempts < SCAN_MAX_ATTEMPTS) {
                     setTimeout(attempt, SCAN_DELAY_MS);
                 } else {
-                    console.log("[Fecha real fin] Key:", keyForLog, "| No se ha encontrado la tabla | origen:", reason, "| cache se mantiene:", sessionStorage.getItem(getStorageKey(recordId)) || null);
+                    if (DEBUG_LOG){
+                        console.log("[Fecha real fin] Key:", keyForLog, "| No se ha encontrado la tabla | origen:", reason, "| cache se mantiene:", sessionStorage.getItem(getStorageKey(recordId)) || null);
+                    }
                 }
             }
-
             attempt();
         }
-
 
         // Estado de contexto (para detectar cambios internos de Salesforce sin recargar)
         let lastPath = null;
@@ -474,250 +743,25 @@
             setInterval(() => {
                 //const rid = getRecordIdFromUrl();
                 //const valByRid = rid ? sessionStorage.getItem(getStorageKey(rid)) : null;
+                //const vRidShown = (valByRid === NULL_MARK) ? null : (valByRid || null);
                 //const valLast = sessionStorage.getItem(STORAGE_KEY_LAST);
-
-                const rid = getRecordIdFromUrl();
-                const valByRid = rid ? sessionStorage.getItem(getStorageKey(rid)) : null;
-                const vRidShown = (valByRid === NULL_MARK) ? null : (valByRid || null);
-                const valLast = sessionStorage.getItem(STORAGE_KEY_LAST);
-
-                //console.log("[Control Plazos][CACHE] Ultima fecha real fin: ",valLast || null,
-                //            "| rid:", rid || null,
-                //            "| por rid:", valByRid || null,
-                //            "| last:", valLast || null,
-                //            "| window:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null
-
-                console.log("[Control Plazos][CACHE] FINAL:", window.CONTROL_PLAZOS_FECHA_REAL_FIN
-                           );
+                if (DEBUG_LOG){
+                    console.log("[Control Plazos][CACHE] FINAL:", window.CONTROL_PLAZOS_FECHA_REAL_FIN);
+                }
             }, DEBUG_CACHE_EVERY_MS);
         }
 
-        console.log("[Control Plazos] Script Fecha real fin cargado (persistente, cache por recordId, modal ok)");
+        if (DEBUG_LOG) {
+            console.log("[Control Plazos] Script Fecha real fin cargado (persistente, cache por recordId, modal ok)");
+        }
+
     })();
 
 
 
-    // ------------------------------------------------------------
-    // MODULO 2: Fecha de Aceptacion (Record__c) - ORIGINAL 1.3.1
-    // Integrado sin cambiar la logica, solo renombrado internamente
-    // para evitar colisiones con el Modulo 1.
-    // ------------------------------------------------------------
-
-    (function () {
-        const LABEL = "Fecha de Aceptación";
-        const ONLY_OBJECT_API = "Record__c";
-        const STORAGE_KEY = "CONTROL_PLAZOS_FECHA_ACEPTACION";
-
-        // Debug
-        const DEBUG_CACHE_EVERY_MS = 5000;
-
-        // -------------------------
-        // RESTAURAR CACHE tras F5
-        // -------------------------
-        if (sessionStorage.getItem(STORAGE_KEY)) {
-            window.CONTROL_PLAZOS_FECHA_ACEPTACION = sessionStorage.getItem(STORAGE_KEY);
-            console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
-        } else {
-            window.CONTROL_PLAZOS_FECHA_ACEPTACION = null;
-        }
-
-        const clean = s => s?.replace(/\u00A0/g, " ")
-        .replace(/[ \t\r\n]+/g, " ")
-        .trim() || "";
-
-        function isVisible(el) {
-            if (!el || el.nodeType !== 1) return false;
-            if (el.closest('[aria-hidden="true"]')) return false;
-            const r = el.getClientRects();
-            return r && r.length > 0;
-        }
-
-        function deepQueryAll(root, selector, cap = 20000) {
-            const out = [];
-            const seen = new Set();
-            const stack = [root];
-            let left = cap;
-
-            while (stack.length && left-- > 0) {
-                const n = stack.pop();
-                if (!n || seen.has(n)) continue;
-                seen.add(n);
-
-                try {
-                    if (n.querySelectorAll) {
-                        const found = n.querySelectorAll(selector);
-                        for (const el of found) out.push(el);
-                    }
-                } catch {}
-
-                const ch = n.children || n.childNodes;
-                if (ch) for (let i = 0; i < ch.length; i++) stack.push(ch[i]);
-            }
-            return out;
-        }
-
-        function isRecordPageByUrl() {
-            return /\/lightning\/r\/Record__c\/[a-zA-Z0-9]{15,18}\/view/i.test(location.href);
-        }
-
-        function getRecordIdFromUrl() {
-            const m = location.href.match(/\/lightning\/r\/Record__c\/([a-zA-Z0-9]{15,18})\/view/i);
-            return m ? m[1] : null;
-        }
-
-        function getVisibleTabPanel() {
-            return (
-                document.querySelector('.slds-tabs_default__content[aria-hidden="false"]') ||
-                document.querySelector('.slds-tabs_scoped__content[aria-hidden="false"]') ||
-                document.querySelector('[role="tabpanel"][aria-hidden="false"]') ||
-                null
-            );
-        }
-
-        function getActiveRoot() {
-            const tabPanel = getVisibleTabPanel();
-            if (tabPanel) return tabPanel;
-            return document;
-        }
-
-        function getActiveRecordIdFromDom() {
-            const root = getActiveRoot();
-
-            const layout = root.querySelector('records-record-layout');
-            if (layout) {
-                const rid = layout.getAttribute('record-id') ||
-                      layout.getAttribute('data-recordid') ||
-                      layout.getAttribute('data-record-id');
-                if (rid) return rid;
-            }
-
-            const attrs = ['[record-id]', '[data-recordid]', '[data-record-id]'];
-            for (const sel of attrs) {
-                const el = root.querySelector(sel);
-                if (el) {
-                    const rid = el.getAttribute('record-id') ||
-                          el.getAttribute('data-recordid') ||
-                          el.getAttribute('data-record-id');
-                    if (rid) return rid;
-                }
-            }
-
-            const a = root.querySelector('a[href*="/lightning/r/Record__c/"]');
-            if (a) {
-                const m = a.getAttribute("href")?.match(/\/Record__c\/([a-zA-Z0-9]{15,18})\/view/i);
-                if (m) return m[1];
-            }
-            return null;
-        }
-
-        function getUrlKey() {
-            const rid = getRecordIdFromUrl();
-            if (rid) return ONLY_OBJECT_API + ":" + rid;
-            return null;
-        }
-
-        function getActiveDomKey() {
-            const rid = getActiveRecordIdFromDom();
-            if (rid) return ONLY_OBJECT_API + ":" + rid;
-            return null;
-        }
-
-        function readFechaAceptacion(root) {
-            const blocks = deepQueryAll(root, ".slds-form-element");
-            for (const el of blocks) {
-                if (!isVisible(el)) continue;
-
-                const lab = el.querySelector(".test-id__field-label, label");
-                if (!lab || !isVisible(lab)) continue;
-
-                if (clean(lab.textContent) !== LABEL) continue;
-
-                const valRoot = el.querySelector(".test-id__field-value, .slds-form-element__control");
-                if (!valRoot || !isVisible(valRoot)) continue;
-
-                return clean(valRoot.innerText || valRoot.textContent || "") || null;
-            }
-            return null;
-        }
-
-        let scanToken = 0;
-
-        function scanForCurrent(reason) {
-            const urlKey = getUrlKey();
-            const domKey = getActiveDomKey();
-            if (!urlKey && !domKey && !isRecordPageByUrl()) return;
-
-            const token = ++scanToken;
-            const keyForLog = domKey || urlKey || "Record__c:?";
-
-            let attempts = 0;
-            const maxAttempts = 12;
-            const delayMs = 700;
-
-            function attempt() {
-                if (token !== scanToken) return;
-
-                attempts++;
-                const valor = readFechaAceptacion(getActiveRoot());
-
-                if (valor) {
-                    const prev = window.CONTROL_PLAZOS_FECHA_ACEPTACION;
-
-                    // Actualiza cache (aunque sea el mismo valor)
-                    window.CONTROL_PLAZOS_FECHA_ACEPTACION = valor;
-                    sessionStorage.setItem(STORAGE_KEY, valor);
-
-                    // Solo log si ha cambiado el valor respecto al que ya habia
-                    if (valor !== prev) {
-                        console.log("[Control Plazos] Key:", keyForLog, "| Fecha:", valor, "| origen:", reason);
-                    }
-
-                    return;
-                }
-
-
-                if (attempts < maxAttempts) setTimeout(attempt, delayMs);
-            }
-
-            attempt();
-        }
-
-        let lastUrlKey = null;
-        let lastDomKey = null;
-
-        setInterval(() => {
-            const u = getUrlKey();
-            const d = getActiveDomKey();
-            if ((u && u !== lastUrlKey) || (d && d !== lastDomKey)) {
-                lastUrlKey = u;
-                lastDomKey = d;
-                scanForCurrent("cambio contexto");
-            }
-        }, 800);
-
-        setTimeout(() => {
-            lastUrlKey = getUrlKey();
-            lastDomKey = getActiveDomKey();
-            scanForCurrent("inicio");
-        }, 2000);
-
-        if (DEBUG_CACHE_EVERY_MS > 0) {
-            setInterval(() => {
-                console.log(
-                    "[Control Plazos][CACHE] ACEPT:",
-                    window.CONTROL_PLAZOS_FECHA_ACEPTACION
-                );
-            }, DEBUG_CACHE_EVERY_MS);
-        }
-
-        console.log("[Control Plazos] Script Fecha de Aceptacion cargado (persistente)");
-    })();
-
-
-    // ----------------------------------------
+    // ----------------------------------------------------------------------------------------------------
     // MODULO 3: UI popover fechas
-    // (popover debajo del input + rellenar fechas)
-    // ----------------------------------------
+    // ----------------------------------------------------------------------------------------------------
     (function () {
         //"use strict"; //"use strict" activa el modo estricto de JavaScript solo en el ámbito donde aparece.
 
@@ -734,13 +778,11 @@
         // Campos
         const START_DATE_NAME = "Start_date__c";
         const EXPECTED_DATE_NAME = "Expected_date__c";
-        const ENABLE_START_DATE_POPOVER = false;
-        const ENABLE_EXPECTED_DATE_POPOVER = true;
 
+        //popover
+        const ENABLE_START_DATE_POPOVER = !!window.CP_FLAGS.enableStartDatePopover;
+        const ENABLE_EXPECTED_DATE_POPOVER = !!window.CP_FLAGS.enableExpectedDatePopover;
 
-        // =========================================================
-        // Festivos (editar a mano). Formato: "YYYY-MM-DD"
-        // =========================================================
         const CP_HOLIDAYS = [
             // "2026-01-01",
             // "2026-01-06",
@@ -767,11 +809,7 @@
         }
 
         function buildHolidaySet() {
-            const set = new Set();
-            for (const s of CP_HOLIDAYS) {
-                if (typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.trim())) set.add(s.trim());
-            }
-            return set;
+            return buildHolidaySetGlobal();
         }
 
         let CP_HOLIDAY_SET = buildHolidaySet();
@@ -805,7 +843,6 @@
             }
             return d;
         }
-
 
         function parseDateFromInput(text) {
             if (text == null) return null;
@@ -842,7 +879,6 @@
                     if (!isNaN(d.getTime())) return d;
                 }
             }
-
 
             // 1) yyyy-mm-dd exacto
             m = s0.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -881,7 +917,6 @@
             const MONS = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
             return `${pad2(d.getDate())}-${MONS[d.getMonth()]}-${d.getFullYear()}`;
         }
-
 
         function readInputText(el) {
             if (!el) return "";
@@ -965,9 +1000,6 @@
             return "";
         }
 
-
-
-
         function formatDateDDMMYYYY(d) {
             return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
         }
@@ -1025,7 +1057,6 @@
             return null;
         }
 
-
         function getBaseDateForExpected(expectedInputEl) {
             // SIEMPRE usar Start_date__c como base (Expected no se usa como referencia)
             const startInput = findInputByName(START_DATE_NAME);
@@ -1037,9 +1068,6 @@
             console.log("[expected_date][debug] rawStart:", rawStart);
             return { base: null, source: "none", raw: "" };
         }
-
-
-
 
         function writeDateTextValue(el, text) {
             try {
@@ -1060,9 +1088,7 @@
             }
         }
 
-        // =========================================================
         // Popover unico (estado)
-        // =========================================================
         let pickerOpen = false;
         let panelEl = null;
         let activeInputEl = null;
@@ -1102,11 +1128,8 @@
         const POPOVER_SHIFT_Y = 0; // positivo = abajo, negativo = arriba
 
         function buildPopover(anchorRect, mode) {
-
-
             const wrap = document.createElement("div");
             wrap.id = MODAL_ID;
-
             wrap.style.position = "fixed";
             wrap.style.zIndex = "999999";
             wrap.style.left = "0";
@@ -1179,14 +1202,6 @@
 
             const mkTile = mkTileFactory();
 
-
-            //Regla general
-            //Por cada nueva opcion “X dias”:
-            //Nuevo boton: buttons.bX = mkTile("X dias")
-            //Nuevo handler: applyExpectedDelta(..., "dX")
-            //Nuevo caso: if (kind === "dX") addBusinessDays(..., X)
-
-
             let buttons = {};
 
             if (mode === "start") {
@@ -1214,14 +1229,10 @@
                 grid.appendChild(buttons.bCancel);
             }
 
-
             rightCol.appendChild(grid);
-
             panel.appendChild(leftCol);
             panel.appendChild(rightCol);
-
             wrap.appendChild(panel);
-
             return { wrap, panel, buttons };
         }
 
@@ -1276,7 +1287,6 @@
             }
         }
 
-
         function onDocClick(ev) {
             const t = ev.target;
 
@@ -1293,9 +1303,6 @@
             pickerOpen = false;
             cleanup();
         }
-
-
-
 
         function onKey(ev) {
             if (ev.key === "Escape") {
@@ -1352,9 +1359,6 @@
                 }
             }, 120);
         }
-
-
-
 
         function showPickerModalForInput(inputEl, mode) {
             if (!inputEl) return;
@@ -1453,7 +1457,6 @@
                 }
             }
 
-
             document.body.appendChild(wrap);
 
             // NO focus al popover (permite escribir en el input)
@@ -1466,7 +1469,6 @@
             } catch (_) {}
             return false;
         }
-
 
         document.addEventListener("pointerdown", (ev) => {
             if (!isCreateUrl()) return;
@@ -1524,11 +1526,8 @@
 
                 if (ENABLE_EXPECTED_DATE_POPOVER) {
                     setTimeout(() => showPickerModalForInput(expectedInput, "expected"), 0);
-
                 }
                 return;
-
-
             }
 
             // 2) Si el click cae sobre un host Lightning dentro del path, buscar el input dentro del host
@@ -1540,13 +1539,17 @@
 
                     const s = n.querySelector(`input[name="${START_DATE_NAME}"]`);
                     if (s) {
-                        setTimeout(() => showPickerModalForInput(s, "start"), 0);
+                        if (ENABLE_START_DATE_POPOVER) {
+                            setTimeout(() => showPickerModalForInput(s, "start"), 0);
+                        }
                         return;
                     }
 
                     const e = n.querySelector(`input[name="${EXPECTED_DATE_NAME}"]`);
                     if (e) {
-                        setTimeout(() => showPickerModalForInput(e, "expected"), 0);
+                        if (ENABLE_EXPECTED_DATE_POPOVER) {
+                            setTimeout(() => showPickerModalForInput(e, "expected"), 0);
+                        }
                         return;
                     }
                 }
@@ -1559,26 +1562,25 @@
             // Aqui solo abrimos si el click fue sobre el propio campo (lo mas aproximado posible)
             // Si no podemos detectarlo, mejor no abrir para no abrir en cualquier click de la pagina.
             if (s2 && s2 === ev.target) {
-                setTimeout(() => showPickerModalForInput(s2, "start"), 0);
+                if (ENABLE_START_DATE_POPOVER) {
+                    setTimeout(() => showPickerModalForInput(s2, "start"), 0);
+                }
                 return;
             }
             if (e2 && e2 === ev.target) {
-                setTimeout(() => showPickerModalForInput(e2, "expected"), 0);
+                if (ENABLE_EXPECTED_DATE_POPOVER) {
+                    setTimeout(() => showPickerModalForInput(e2, "expected"), 0);
+                }
                 return;
             }
         }, true);
-
-
-
     })();
 
 
 
-    // ----------------------------------------
+    // ----------------------------------------------------------------------------------------------------
     // MODULO 4: UI Create Prerrequisito
-    //
-    // ----------------------------------------
-
+    // ----------------------------------------------------------------------------------------------------
 
     (function() {
         const MODAL_WHITELIST = new Set(['01/01', '01/07','03/07']);
@@ -1643,7 +1645,6 @@
         const NAME_LABEL_RX = /Nombre del Pre-?requisito/i;
         const COMM_LABEL_RX = /Comunicaci[oó]n al cliente\s*\(push\)/i;
 
-
         // Detectores de contexto (URL) //Create
         //const RX_NEW = /\/lightning\/o\/Prerequisite__c\/create(?:\?|$)/i;
         const RX_NEW = /\/lightning\/cmp\/c__nnssCreatePrerequisito(?:\?|$)/i;
@@ -1663,7 +1664,6 @@
         const buildKey2 = (tipo, subtipo) => `${tipo ?? ''}/${subtipo ?? ''}`;
         const buildKey3 = (tipo, subtipo, nameKey) => `${buildKey2(tipo, subtipo)}/${nameKey ?? ''}`;
         const guardReady = () => !(ST.modalOpen || ST.choosing);
-
 
         const ST = {
             tipo: null,
@@ -1688,7 +1688,6 @@
             // dentro de const ST = { ... }
             mode: 'view', // 'new' | 'edit' | 'view'
             canAutofill: false, // permiso para que applyName/applyComm actúen
-
         };
 
         const ESTUDI_TARGET = { tipo: '03', subtipo: '07' };
@@ -1752,9 +1751,9 @@
         const resetNameCommAndSubtipo = () => resetFields(3);
         const resetAll = () => resetFields(4);
 
-        async function resetFieldsDeferred(level = 2, ms = 80) { //可选稳妥）把 resetFieldsDeferred 的延时再拉长一点
-            await delay(ms); // 延后一个很小的时间，避开 LWC 的一次同步校验周期
-            await resetFields(level); // 再去清空
+        async function resetFieldsDeferred(level = 2, ms = 80) {
+            await delay(ms);
+            await resetFields(level);
         }
 
         async function pickEstudiVariant() {
@@ -1764,14 +1763,12 @@
         }
 
         function requestApplyComm() {
-            // 弹窗开着就先记一笔，等关闭后再执行
             if (ST.modalOpen || ST.choosing) { COMM_PENDING = true; return; }
-            // 简单防抖
             clearTimeout(COMM_DEBOUNCE_T);
             COMM_DEBOUNCE_T = setTimeout(() => {
                 COMM_PENDING = false;
-                applyComm(); // 真正调用
-            }, 160);// （可选）把通信的防抖再宽一点
+                applyComm();
+            }, 160);// delay comunicacion
         }
 
         function resetStartDateState({ forceClear = false } = {}) {
@@ -1850,7 +1847,6 @@
                 }
                 host.dispatchEvent(new CustomEvent('change', { detail:{ value:text }, bubbles:true, composed:true }));
                 host.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
-                // —— 关键：若是必填字段且文本非空，主动清除错误并触发一次校验 —— //
                 try {
                     if (text && text.trim() !== '') {
                         if (typeof host.setCustomValidity === 'function') host.setCustomValidity('');
@@ -1863,12 +1859,6 @@
                 return false;
             }
         }
-
-
-
-
-
-
 
         // —— Builder de modal genérico —— //
         async function showModal({ title, bodyHTML, actions }) {
@@ -1926,22 +1916,10 @@
                     $actions.appendChild(b);
                 });
                 function done(result){ root.remove(); style.remove(); resolve(result); }
-
-                //可选
-                //function done(result){
-                //  try { root.remove(); style.remove(); } catch(_) {}
-                // 兜底：任何关闭路径都把标志位清掉
-                //  ST.modalOpen = false;
-                //  ST.choosing = false;
-                //  resolve(result);
-                //}
-
                 root.querySelector('.af-backdrop').addEventListener('click', () => done(null));
                 document.addEventListener('keydown', e => { if (e.key === 'Escape') done(null); }, { once:true });
             });
         }
-
-
 
         function showChoiceModal(title, choices) {
             if (ST.modalOpen || ST.choosing) return Promise.resolve(null);
@@ -1992,7 +1970,6 @@
             });
         }
 
-
         function showNoticeModal(message){
             if (ST.modalOpen || ST.choosing) return Promise.resolve();
             ST.modalOpen = true; ST.choosing = true;
@@ -2017,7 +1994,6 @@
                 }
                 return toObj(picked);
             }
-            // Regla única
             return toObj(rule);
         }
 
@@ -2202,12 +2178,9 @@
                             writeHostValue(ST.nameHost, entry.write);
                             ST.lastTextName = entry.write;
                             ST.lastNameKey = entry.key;
-
                             onPrereqNameConfirmedAndMaybeResetDates();
-
                             maybeHandleStartDateAfterNameChange();
                             maybeHandleExpectedAfterNameChange();
-
                         }
                         ST.canAutofill = true;
                         requestApplyComm();
@@ -2261,22 +2234,17 @@
                         ST.lockNameOnce = true;
                         ST.lastTextName = 'PART';
                         ST.lastNameKey = choice.key;
-                        _nameConfirmed = true; // <-- NUEVO
+                        _nameConfirmed = true;
                         onPrereqNameConfirmedAndMaybeResetDates();
-
                         maybeHandleStartDateAfterNameChange();
                         maybeHandleExpectedAfterNameChange();
-
-
                         ensurePickHosts();
                         await setComboValue(ST.tipoHost, choice._target.tipo);
                         setTimeout(async () => {
                             await setComboValue(ST.subtipoHost, choice._target.subtipo);
-
                             ST.nameHost = findHostByLabel(NAME_LABEL_RX, ['lightning-input']) || ST.nameHost;
                             if (ST.nameHost) writeHostValue(ST.nameHost, 'PART');
                             ST.canAutofill = true;
-
                             requestApplyComm();
                             destroyPicker();
                         }, 180);
@@ -2313,11 +2281,8 @@
                     ST.lastNameKey = v.key;
 
                     onPrereqNameConfirmedAndMaybeResetDates();
-
                     maybeHandleStartDateAfterNameChange();
                     maybeHandleExpectedAfterNameChange();
-
-
                     ensurePickHosts();
                     await setComboValue(ST.tipoHost, ESTUDI_TARGET.tipo);
                     setTimeout(async () => {
@@ -2397,13 +2362,9 @@
                             ST.lastTextName = picked.write || '';
                             ST.lastNameKey = picked.key || (picked.write || '');
                             _nameConfirmed = !!ST.lastTextName;
-
                             onPrereqNameConfirmedAndMaybeResetDates();
-
                             maybeHandleStartDateAfterNameChange();
                             maybeHandleExpectedAfterNameChange();
-
-
                         }
                         ST.lastKeyName = key;
                         requestApplyComm();
@@ -2433,12 +2394,9 @@
                     if (ST.lockNameOnce) {
                         ST.lockNameOnce = false;
                         ST.lastKeyName = key;
-
                         onPrereqNameConfirmedAndMaybeResetDates();
-
                         maybeHandleStartDateAfterNameChange();
                         maybeHandleExpectedAfterNameChange();
-
                         requestApplyComm();
                         return;
                     }
@@ -2456,12 +2414,9 @@
                         ST._lastHadRule = true;
                     }
                     ST.lastKeyName = key;
-
                     onPrereqNameConfirmedAndMaybeResetDates();
-
                     maybeHandleStartDateAfterNameChange();
                     maybeHandleExpectedAfterNameChange();
-
                     requestApplyComm();
                 }, 120);
             };
@@ -2512,14 +2467,11 @@
             ST.lastTextName = val;
             ST.lastNameKey = val; // sin mapeo, usamos el texto
             _nameConfirmed = !!val; // <-- NUEVO
-
             onPrereqNameConfirmedAndMaybeResetDates();
-
             maybeHandleStartDateAfterNameChange();
             maybeHandleExpectedAfterNameChange();
 
         }
-
         // en install()
         document.addEventListener('blur', (e) => {
             const p = e.composedPath?.() || [];
@@ -2633,16 +2585,15 @@
             await resetFieldsDeferred(2);
             const choice = await showChoiceModal('Seleccione Pre-requisito', rule);
 
-            // —— ★ 新增：03/07 的 ESTUDI 需要二级弹窗 —— //
+            // modal a segundo nivel
             const keyNow = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
             const pickedLabel = (typeof choice === 'object'
                                  ? (choice.label ?? choice.write ?? '')
                                  : String(choice)).trim().toUpperCase();
 
             if (keyNow === '03/07' && pickedLabel === 'ESTUDI') {
-                const v = await pickEstudiVariant(); // 打开二级弹窗
-                if (!v) return; // 取消就退出
-                // 用二级选择的结果覆盖
+                const v = await pickEstudiVariant(); // abrir modal a segundo nivel
+                if (!v) return; // cerrar modal si clica calcelar
                 const finalWrite = v.write ?? v.label ?? '';
                 const finalKey = v.key ?? finalWrite;
 
@@ -2650,18 +2601,13 @@
                 ST.lastTextName = finalWrite;
                 ST.lastNameKey = finalKey;
                 _nameConfirmed = !!ST.lastTextName;
-
                 onPrereqNameConfirmedAndMaybeResetDates();
-
-                maybeHandleStartDateAfterNameChange(); // ← AÑÁDELO AQUÍ si lo omitiste
+                maybeHandleStartDateAfterNameChange();
                 maybeHandleExpectedAfterNameChange();
-
                 ST.canAutofill = true;
                 requestApplyComm();
-                return; // 二级路径到此结束，避免继续走一级写入
+                return;
             }
-
-
 
             if (choice == null) return;
             const writeText = (typeof choice === 'object') ? (choice.write ?? choice.label ?? '') : choice;
@@ -2670,9 +2616,7 @@
             ST.lastTextName = writeText;
             ST.lastNameKey = nameKey;
             _nameConfirmed = !!ST.lastTextName;
-
             onPrereqNameConfirmedAndMaybeResetDates();
-
             maybeHandleStartDateAfterNameChange();
             maybeHandleExpectedAfterNameChange();
             requestApplyComm();
@@ -2682,7 +2626,6 @@
             const path = e.composedPath?.() || [];
             const host = path.find(n => n && n.tagName === 'LIGHTNING-COMBOBOX');
             if (!host) return;
-
             const label = host.label || host.getAttribute?.('label') || '';
             const val = ('value' in host) ? host.value : null;
             if (val == null) return;
@@ -2691,7 +2634,7 @@
                 ST.tipo = val;
                 ST.canAutofill = true;
                 await resetFields(3);
-                clearStartDateIfAuto(); // ← opcional: limpiarla al cambiar Tipo
+                clearStartDateIfAuto();
                 clearExpectedIfAuto();
                 _nameConfirmed = false;
                 return;
@@ -2707,7 +2650,6 @@
             }
         }
 
-
         // === Estado del autofill de Start_date__c ===
         let _startDateAutofilledOnce = false;
         let _startDateWasAuto = false;
@@ -2719,7 +2661,6 @@
         // - Define aqui que prerrequisitos rellenan Start/Expected o no
         // - Por defecto: si no hay regla, se aplica la logica actual
         // =========================================================
-
 
         //Para añadir futuras reglas (ejemplos)
         const USE_ACCEPTACION = new Set([
@@ -2744,16 +2685,12 @@
             }
             return null; // default
         }
-
-
         // Origenes posibles de cache (expansible)
         function getCacheValueBySource(source) {
             if (source === 'REAL_FIN') return window.CONTROL_PLAZOS_FECHA_REAL_FIN || null;
             if (source === 'ACEPTACION') return window.CONTROL_PLAZOS_FECHA_ACEPTACION || null;
             return null;
         }
-
-
 
         let _lastConfirmedName = null;
 
@@ -2776,7 +2713,6 @@
             _expectedWasAuto = false;
         }
 
-
         function onPrereqNameConfirmedAndMaybeResetDates() {
             if (ST.mode !== 'new') return;
 
@@ -2789,11 +2725,8 @@
             _lastConfirmedName = cur;
         }
 
-
         // Flags nuevos: para saber si Start lo puso el script via cache
         let _startDateWasCache = false;
-
-
 
         function shouldSkipStartDate(){
             const rule = getRuleForCurrentPrereqName();
@@ -2804,7 +2737,6 @@
             const n = (ST.lastTextName || '').trim().toUpperCase();
             return false;
         }
-
 
         function clearStartDateIfAuto(){
             try{
@@ -2819,7 +2751,6 @@
                 }
             }catch(_){}
         }
-
 
         // === Helpers de "Fecha de inicio" ===
         function findStartDateInput() {
@@ -2873,8 +2804,6 @@
             return writeDateTextValue(el, todayES);
         }
 
-
-
         // Lógica central: decide si autocompletar o limpiar en función del Nombre actual
         async function maybeHandleStartDateAfterNameChange(){
             if (ST.mode !== 'new') return;
@@ -2898,7 +2827,6 @@
                         clearExpectedIfAuto();
                         return;
                     }
-
                     // Normaliza formato esperado: tu cache ya viene como DD/MM/YYYY
                     // (si algun dia lo guardas distinto, aqui lo adaptas)
                     await delay(80);
@@ -2938,8 +2866,6 @@
             }
         }
 
-
-
         // === Expected_date__c (Fecha prevista fin) ===
         const EXPECTED_DATE_NAME = 'Expected_date__c';
 
@@ -2951,7 +2877,6 @@
 
         let _expectedAutofilledOnce = false; // solo true si lo escribió el script
         let _expectedWasAuto = false; // recuerda si el valor actual lo puso el script
-
 
         function pad2(n){ return String(n).padStart(2,'0'); }
 
@@ -2974,9 +2899,13 @@
             return (w===0 || w===6);
         }
 
+        let HOLIDAYS_SET = buildHolidaySetGlobal();
+
         function isHoliday(d){
-            return HOLIDAYS_CAT.has(ymd(d));
+            return HOLIDAYS_SET.has(ymd(d));
         }
+
+        HOLIDAYS_SET = buildHolidaySetGlobal();
 
         function addBusinessDays(start, n){
             const out = new Date(start.getFullYear(), start.getMonth(), start.getDate());
@@ -2984,7 +2913,7 @@
             while(added < n){
                 out.setDate(out.getDate() + 1);
                 // Si quieres contar festivos oficiales: usa !isWeekend(out) && !isHoliday(out)
-                if(!isWeekend(out) /* && !isHoliday(out) */){
+                if(!isWeekend(out) && !isHoliday(out) ){
                     added++;
                 }
             }
@@ -3017,7 +2946,6 @@
                 }
             }catch(_){}
         }
-
 
         function isEstudiName(){
             const v = (ST.lastTextName || '').trim().toUpperCase();
@@ -3057,9 +2985,6 @@
             }
         }
 
-
-
-
         function resetFormState() {
             ST.tipo = null;
             ST.subtipo = null;
@@ -3082,9 +3007,6 @@
             resetStartDateState(); // <- resetea banderas de fecha al cambiar de pantalla/estado
             _nameConfirmed = false; // <-- NUEVO
             _lastConfirmedName = null;
-
-
-
         }
 
         function install() {
@@ -3111,8 +3033,6 @@
                     else ST.mode = 'view';
                     if (ST.mode === 'new') resetStartDateState();
 
-
-
                     // 3) Localiza hosts y decide si autocompletar
                     setTimeout(() => {
                         ST.nameHost = ST.nameHost || findHostByLabel(NAME_LABEL_RX, ['lightning-input','lightning-input-field']);
@@ -3137,11 +3057,9 @@
                         // No autocompletar fecha al abrir: esperar a que se confirme el nombre
                         if (ST.mode === 'new' && _nameConfirmed) {
                             onPrereqNameConfirmedAndMaybeResetDates();
-
                             maybeHandleStartDateAfterNameChange();
                             maybeHandleExpectedAfterNameChange();
                         }
-
 
                     }, 400);
                 }
