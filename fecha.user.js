@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name         NEW-Pre-requisito
 // @namespace    sf-control-plazos
-// @version      1.2.6
-// @description  Creación prerrequisito, se diveden en 4 modulos.
-// @description  modulo = variable global, fecha aceptacion, fecha ultimo cierre prerrequisito, UI rellenar fecha manual, prerrequisito con autorrelleno de fecha.
+// @version      1.5.0
+// @description  Integra dos funciones: (1) Ultima "Fecha real fin" desde related list Pre-requisitos (Constructive_project__c) con cache por recordId y soporte CMP create. (2) "Fecha de Aceptacion" (Record__c) con la misma logica original 1.3.1 (cache unico persistente).
 // @match        https://*.lightning.force.com/*
 // @match        https://*.my.salesforce.com/*
 // @run-at       document-idle
@@ -12,26 +11,31 @@
 
 (function () {
     "use strict";
-    // ------------------------------------------------------------------------------------------------------------------------
-    // MODULO 0: Festivos compartidos (un solo origen)
-    // ------------------------------------------------------------------------------------------------------------------------
+    if (window.__CP_CONTROL_PLAZOS_LOADED__) return;
+    window.__CP_CONTROL_PLAZOS_LOADED__ = true;
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------------
+    // MODULO 0: Festivos compartidos (un solo origen) ¡reglas!
+    // ---------------------------------------------------------------------------------------------------------------------------------------------------
+    // Para agregar o eliminar los festivos. ¡reglas!
     window.CP_HOLIDAYS = window.CP_HOLIDAYS || [
-        "2026-01-01", // Año Nuevo
-        "2026-01-06", // Reyes
-        "2026-04-03", // Viernes Santo
-        "2026-04-06", // Lunes de Pascua Florida
-        "2026-05-01", // Fiesta del Trabajo
-        "2026-05-25", // Lunes de Pascua Granada
-        "2026-06-24", // San Juan
-        "2026-08-15", // La Asunción
-        "2026-09-11", // Diada Nacional de Cataluña
-        "2026-09-24", // Mare de Déu de la Mercè
-        "2026-10-12", // Día Nacional de España
-        "2026-12-08", // La Inmaculada
-        "2026-12-25", // Navidad
-        "2026-12-26" // San Esteban
+        "2026-01-01", // Año Nuevo (Estatal)
+        "2026-01-06", // Reyes Magos (Estatal)
+        "2026-04-03", // Viernes Santo (Estatal)
+        "2026-04-06", // Lunes de Pascua (Autonómico Cataluña)
+        "2026-05-01", // Fiesta del Trabajo (Estatal)
+        "2026-06-24", // San Juan (Autonómico Cataluña)
+        "2026-08-15", // Asunción de la Virgen (Estatal)
+        "2026-09-11", // Diada Nacional de Cataluña (Autonómico Cataluña)
+        "2026-10-12", // Fiesta Nacional de España (Estatal)
+        "2026-11-01", // Todos los Santos (Estatal, cae en domingo)
+        "2026-12-06", // Día de la Constitución (Estatal, cae en domingo)
+        "2026-12-08", // La Inmaculada Concepción (Estatal)
+        "2026-12-25", // Navidad (Estatal)
+        "2026-12-26" // San Esteban (Autonómico Cataluña)
     ];
 
+    // Activar o desactivar console.log (imresión del cahce en console) del cache. ¡reglas!
     window.CP_DEBUG = window.CP_DEBUG || {
         aceptacionLog: false, //true para activar log
         aceptacionEveryMs: 0, // 0 = desactivado, 5000 ms retard para imprimir
@@ -40,8 +44,9 @@
         realFinEveryMs: 0,
     };
 
+    // Activar o desactivar ventana flotante de relleno de fecha. ¡reglas!
     window.CP_FLAGS = window.CP_FLAGS || {
-        enableStartDatePopover: false,
+        enableStartDatePopover: true,
         enableExpectedDatePopover: true,
     };
 
@@ -282,9 +287,9 @@
 
     })();
 
-    // ------------------------------------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------------------------------------------------------------
     // MODULO 2: Fecha Ultima Fecha real fin (Constructive_project__c)
-    // ------------------------------------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------------------------------------------------------------
 
     (function () {
         const ONLY_OBJECT_API = "Constructive_project__c";
@@ -667,10 +672,7 @@
                     const shown = (raw === NULL_MARK) ? null : (raw || null);
 
                     if (DEBUG_LOG){
-                        console.log("[Fecha real fin] Key:", keyForLog,
-                                    "| No hay fecha -> cache a null",
-                                    "| origen:", reason,
-                                    "| cache por rid:", shown);
+                        console.log("[Fecha real fin] Key:", keyForLog, "| No hay fecha -> cache a null", "| origen:", reason, "| cache por rid:", shown);
                     }
                     attachTableObserver(best.table);
                     return;
@@ -759,9 +761,9 @@
 
 
 
-    // ----------------------------------------------------------------------------------------------------
+    // -------------------------------------------------------------------------------------------------------------------------------------------
     // MODULO 3: UI popover fechas
-    // ----------------------------------------------------------------------------------------------------
+    // -------------------------------------------------------------------------------------------------------------------------------------------
     (function () {
         //"use strict"; //"use strict" activa el modo estricto de JavaScript solo en el ámbito donde aparece.
 
@@ -782,23 +784,23 @@
         //popover
         const ENABLE_START_DATE_POPOVER = !!window.CP_FLAGS.enableStartDatePopover;
         const ENABLE_EXPECTED_DATE_POPOVER = !!window.CP_FLAGS.enableExpectedDatePopover;
-
+        // Ya tiene una variable global en el modulo 0
         const CP_HOLIDAYS = [
             // "2026-01-01",
             // "2026-01-06",
         ];
 
-        // Opciones del popover para Expected_date__c
+        // Opciones del popover para Expected_date__c, para agregar o eliminar opciones de ajuste de plazo. ¡reglas!
         // kind: "bdays" = dias laborables (salta findes + festivos)
         // kind: "months" = meses calendario y ajusta a siguiente laborable
         const EXPECTED_OPTIONS = [
-            { label: "10 dias (laboral)", kind: "bdays", value: 10 },
-            { label: "15 dias (laboral)", kind: "bdays", value: 15 },
-            { label: "30 dias (laboral)", kind: "bdays", value: 30 },
-            { label: "60 dias (laboral)", kind: "bdays", value: 60 },
-            { label: "1 mes", kind: "months", value: 1 },
-            { label: "2 meses", kind: "months", value: 2 },
-            { label: "3 meses", kind: "months", value: 3 },
+            { label: "10 días (Laborales)", kind: "bdays", value: 10 },
+            { label: "15 días (Laborales)", kind: "bdays", value: 15 },
+            { label: "30 días (Laborales)", kind: "bdays", value: 30 },
+            { label: "60 días (Laborales)", kind: "bdays", value: 60 },
+            { label: "1 mes (No laborales)", kind: "months", value: 1 },
+            { label: "2 meses (No laborales)", kind: "months", value: 2 },
+            { label: "3 meses (No laborales)", kind: "months", value: 3 },
         ];
 
 
@@ -1123,7 +1125,7 @@
                 return b;
             };
         }
-        // Ajuste manual del popover (en píxeles)
+        // Ajuste manual del popover (en píxeles), para ajustar posicion de popover(ventana flotante) ¡reglas!
         const POPOVER_SHIFT_X = 0; // positivo = derecha, negativo = izquierda
         const POPOVER_SHIFT_Y = 0; // positivo = abajo, negativo = arriba
 
@@ -1578,11 +1580,12 @@
 
 
 
-    // ----------------------------------------------------------------------------------------------------
+    // -------------------------------------------------------------------------------------------------------------------------------------------
     // MODULO 4: UI Create Prerrequisito
-    // ----------------------------------------------------------------------------------------------------
+    // -------------------------------------------------------------------------------------------------------------------------------------------
 
     (function() {
+        // ¡reglas!
         const MODAL_WHITELIST = new Set(['01/01', '01/07','03/07']);
         // ——— Auto-relleno de Fecha de inicio ———
         const START_DATE_NAME = 'Start_date__c';
@@ -1613,7 +1616,7 @@
             //'04/15': '',
             //'04/16': '',
         };
-
+        // ¡reglas! comentarios push
         const COMM_RULES_3 = {
             '01/01/DIVISIO': 'Pendiente que nos haga llegar la División Horizontal para poder finalizar el expediente.',
             '01/01/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
@@ -1645,7 +1648,7 @@
         const NAME_LABEL_RX = /Nombre del Pre-?requisito/i;
         const COMM_LABEL_RX = /Comunicaci[oó]n al cliente\s*\(push\)/i;
 
-        // Detectores de contexto (URL) //Create
+        // Detectores de contexto (URL) //Create // ¡reglas! para detectar URL de SF
         //const RX_NEW = /\/lightning\/o\/Prerequisite__c\/create(?:\?|$)/i;
         const RX_NEW = /\/lightning\/cmp\/c__nnssCreatePrerequisito(?:\?|$)/i;
         const RX_EDIT = /\/lightning\/r\/Prerequisite__c\/[^/]+\/edit(?:\?|$)/i;
@@ -1690,6 +1693,7 @@
             canAutofill: false, // permiso para que applyName/applyComm actúen
         };
 
+        // Para agregar o eliminar opciones de ESTUDI - XXX. ¡reglas!
         const ESTUDI_TARGET = { tipo: '03', subtipo: '07' };
         const ESTUDI_VARIANTS = [
             { label: 'ESTUDI - PER', write: 'ESTUDI - PER', key: 'ESTUDI_PER' },
@@ -1946,7 +1950,6 @@
                     ST.modalOpen = false;
                     ST.choosing = false;
                     ST.canAutofill = true;
-                    // 如果有挂起的 applyComm 请求，这里补一次（带防抖）
                     if (typeof COMM_PENDING !== 'undefined' && COMM_PENDING) requestApplyComm();
                     resolve(val ?? null);
                 };
@@ -1955,15 +1958,12 @@
 
                 document.querySelectorAll('.af-option').forEach((btn, i) => {
                     const handler = (ev) => {
-                        // 防止被外层 Lightning 失焦/遮罩抢走事件
                         ev.preventDefault();
                         ev.stopPropagation();
                         ev.stopImmediatePropagation();
                         finalize(choices[i]);
                     };
-                    // 提前于 click 的通道，更稳
                     btn.addEventListener('pointerdown', handler, { once: true, capture: true });
-                    // 兜底（某些环境仍走 click）
                     btn.addEventListener('click', handler, { once: true, capture: true });
                 });
 
@@ -2346,8 +2346,8 @@
                 if (!ST.subtipo) return;
                 clearTimeout(t);
                 t = setTimeout(async () => {
-                    if (ST.modalOpen || ST.choosing) return; // 先 guard
-                    const token = nextToken(); // 再递增
+                    if (ST.modalOpen || ST.choosing) return;
+                    const token = nextToken();
 
                     const key = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
                     if (ST.lastKeyName === key && ST.lastTextName != null && ST._lastHadRule === true) return;
@@ -2409,7 +2409,7 @@
                     if (writeHostValue(ST.nameHost, writeText)) {
                         ST.lastTextName = writeText;
                         ST.lastNameKey = picked.key ?? writeText;
-                        _nameConfirmed = !!ST.lastTextName; // <-- NUEVO
+                        _nameConfirmed = !!ST.lastTextName;
 
                         ST._lastHadRule = true;
                     }
@@ -2429,9 +2429,8 @@
                 if (!ST.canAutofill && !ST.lockNameOnce && !ST.preNameOverride) return;
                 clearTimeout(t);
                 t = setTimeout(async () => {
-                    if (ST.modalOpen || ST.choosing) return; // 先 guard
-                    const token = nextToken(); // 再递增
-
+                    if (ST.modalOpen || ST.choosing) return;
+                    const token = nextToken();
                     const key2 = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
                     const nombreKey = ST.lastNameKey || ST.lastTextName || '';
                     const key3 = buildKey3(ST.tipo, ST.subtipo, nombreKey);
@@ -2466,7 +2465,7 @@
             const val = (ST.nameHost.value || '').trim();
             ST.lastTextName = val;
             ST.lastNameKey = val; // sin mapeo, usamos el texto
-            _nameConfirmed = !!val; // <-- NUEVO
+            _nameConfirmed = !!val;
             onPrereqNameConfirmedAndMaybeResetDates();
             maybeHandleStartDateAfterNameChange();
             maybeHandleExpectedAfterNameChange();
@@ -2656,35 +2655,40 @@
         // NUEVO: solo permitimos autocompletar si ya se eligió/introdujo un nombre
         let _nameConfirmed = false;
 
-        // =========================================================
-        // BLOQUE DE AJUSTES (reglas futuras)
-        // - Define aqui que prerrequisitos rellenan Start/Expected o no
-        // - Por defecto: si no hay regla, se aplica la logica actual
-        // =========================================================
-
-        //Para añadir futuras reglas (ejemplos)
+        //Para añadir futuras reglas (ejemplos) ¡reglas!
+        //Para definir cual PRE rellna la fecha inicion con fecha aceptacion (USE_ACCEPTACION), ultimo cierre (USE_REAL_FIN) o no rellenado (SKIP_TODAY_START)
         const USE_ACCEPTACION = new Set([
             'IE',
             'AGP',
+            //'xxx',
         ]);
 
         const USE_REAL_FIN = new Set([
-            'FASE OBRA',
+            //'FASE OBRA',
             'OBRA BACKLOG',
         ]);
 
+        const SKIP_TODAY_START = new Set([
+            // "ANULAR",
+            "PTE ACT CLIENT",
+        ]);
+
         function getRuleForCurrentPrereqName() {
-            const raw = (ST.lastTextName || '').trim();
+            const raw = (ST.lastTextName || "").trim();
             const name = raw.toUpperCase();
 
             if (USE_REAL_FIN.has(name)) {
-                return { start:{ mode:'cache', source:'REAL_FIN' } };
+                return { start: { mode: "cache", source: "REAL_FIN" } };
             }
             if (USE_ACCEPTACION.has(name)) {
-                return { start:{ mode:'cache', source:'ACEPTACION' } };
+                return { start: { mode: "cache", source: "ACEPTACION" } };
+            }
+            if (SKIP_TODAY_START.has(name)) {
+                return { start: { mode: "disable" } }; // <-- NUEVO: ni cache ni hoy
             }
             return null; // default
         }
+
         // Origenes posibles de cache (expansible)
         function getCacheValueBySource(source) {
             if (source === 'REAL_FIN') return window.CONTROL_PLAZOS_FECHA_REAL_FIN || null;
@@ -2814,6 +2818,10 @@
 
             const current = (el.value || '').trim();
             const rule = getRuleForCurrentPrereqName();
+            if (rule && rule.start && rule.start.mode === "disable") {
+                // No rellenar nada (ni cache ni hoy)
+                return;
+            }
 
             // 1) Si hay regla de cache para Start_date y el campo esta vacio -> usar cache
             if (rule && rule.start && rule.start.mode === 'cache') {
