@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         NEW-Pre-requisito
 // @namespace    https://accesosede.my.salesforce.com/
-// @version      1.4.1
-// @description  solucionar modal ventana, diferencia EDIT (desactiva todo) y NEW / CREATE
+// @version      1.5.0
+// @description  solucionar cambio de (VERSIÓ 14) PROCEDIMENT PREREQUISITS
 // @match        https://*.lightning.force.com/*
 // @match        https://*.salesforce.com/*
 // @author       Jiatai + Carles + GPT
@@ -16,14 +16,15 @@
     const MODAL_WHITELIST = new Set(['01/01', '01/07','03/07']);
 
     const NAME_RULES = {
-        '01/01': [{label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT', 'DIVISIO', 'REHABILITACIO'],
-        '01/04': 'CES OC',
-        '01/06': 'IE',
-        '01/07': ['FASE OBRA', 'ANULAR', 'PTE ACT CLIENT'],
-        '01/19': 'CES',
+        //'01/01': [{label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT', 'DIVISIO', 'REHABILITACIO'],
+        '01/01': ['DIVISIO', 'REHABILITACIO'],
+        //'01/04': 'CES OC',
+        //'01/06': 'IE',
+        '01/07': ['AJUSTAT', 'ACTA', 'CES', 'IE', 'CES OC', {label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT','FASE OBRA', 'ANULAR', 'PTE ACT CLIENT'],
+        //'01/19': 'CES',
         '01/18': 'OBRA CIVIL',
-        '01/20': 'AJUSTAT',
-        '01/21': 'ACTA',
+        //'01/20': 'AJUSTAT',
+        //'01/21': 'ACTA',
         //'01/24': '',
         //'01/25': '',
         //'01/26': '',
@@ -42,24 +43,46 @@
     };
 
     const COMM_RULES_3 = {
-        '01/01/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
-        '01/01/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
         '01/01/DIVISIO': 'Pendiente que nos haga llegar la División Horizontal para poder finalizar el expediente.',
+        //'01/01/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
         '01/01/REHABILITACIO': 'Pendiente que nos haga llegar la nueva estructura del edificio para el reparto de la potencia.',
+        //'01/01/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
+
+
         //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-        '01/07/ANULAR': 'Pendiente aportación carta de anulación, justificante de pago y certificado de titularidad bancaria.',
+        '01/07/AJUSTAT': 'Pendiente recibir proyecto eléctrico para revisión.',
+        '01/07/ACTA': 'Una vez validado el proyecto eléctrico, tendrá que aportar permisos y autorizaciones concedidas, y cronograma de ejecución de obra para programar Acta de Lanzamiento.',
+        '01/07/CES': 'En breve les serán requeridos los documentos necesarios para la cesión de las instalaciones',
+        '01/07/IE': 'Pendiente instalacion de la Caja General de Protección/Caja de Protección y Medida.',
+        '01/07/CES OC': 'En breve les serán requeridos los documentos necesarios para realizar la cesión del CT/CM.',
+        '01/07/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
+        '01/07/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
+
+
+        //Original: Subtipo Otros
         '01/07/FASE OBRA': '',
+        '01/07/ANULAR': 'Pendiente aportación carta de anulación, justificante de pago y certificado de titularidad bancaria.',
         '01/07/PTE ACT CLIENT': 'Temporalmente, la gestión del expediente queda suspendida a la espera de la aportación por su parte de los documentos que se le han requerido.',
     };
 
     const COMM_RULES_2 = {
-        '01/04': 'En breve les serán requeridos los documentos necesarios para realizar la cesión del CT/CM.',
-        '01/06': 'Pendiente instalacion de la Caja General de Protección/Caja de Protección y Medida.',
+        //CES OS--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/04': 'En breve les serán requeridos los documentos necesarios para realizar la cesión del CT/CM.',
+
+        //IE--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/06': 'Pendiente instalacion de la Caja General de Protección/Caja de Protección y Medida.',
+
         //'01/08': 'Pendiente de pago del sobrecoste  indicado en las condiciones - técnico econòmicas remitidas.',
         '01/18': 'Pendiente recibir información del espacio reservado para ubicar el CT/CM.',
-        '01/19': 'En breve les serán requeridos los documentos necesarios para la cesión de las instalaciones.',
-        '01/20': 'Pendiente recibir proyecto eléctrico para revisión.',
-        '01/21': 'Una vez validado el proyecto eléctrico, tendrá que aportar permisos y autorizaciones concedidas, y cronograma de ejecución de obra para programar Acta de Lanzamiento.',
+
+        //CES-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/19': 'En breve les serán requeridos los documentos necesarios para la cesión de las instalaciones',
+
+        //AJUSTAT-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/20': 'Pendiente recibir proyecto eléctrico para revisión.',
+
+        //ACTA-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/21': 'Una vez validado el proyecto eléctrico, tendrá que aportar permisos y autorizaciones concedidas, y cronograma de ejecución de obra para programar Acta de Lanzamiento.',
         //'01/24': '',
         //'01/25': '',
         //'01/26': '',
@@ -73,12 +96,11 @@
     const COMM_LABEL_RX = /Comunicaci[oó]n al cliente\s*\(push\)/i;
 
     // Detectores de contexto (URL) //Create
-    const RX_NEW = /\/lightning\/o\/Prerequisite__c\/create(?:\?|$)/i;
-    const RX_CREATE = /\/lightning\/cmp\/c__nnssCreatePrerequisito(?:\?|$)/i;
-
+    //const RX_NEW = /\/lightning\/o\/Prerequisite__c\/create(?:\?|$)/i;
+    //const RX_CREATE = /\/lightning\/cmp\/c__nnssCreatePrerequisito(?:\?|$)/i;
+    const RX_NEW = /\/lightning\/cmp\/c__nnssCreatePrerequisito(?:\?|$)/i;
     const RX_EDIT = /\/lightning\/r\/Prerequisite__c\/[^/]+\/edit(?:\?|$)/i;
     const RX_VIEW = /\/lightning\/r\/Prerequisite__c\/[^/]+\/view(?:\?|$)/i;
-
 
     let COMM_PENDING = false;
     let COMM_DEBOUNCE_T = null;
@@ -182,9 +204,9 @@
     const resetNameCommAndSubtipo = () => resetFields(3);
     const resetAll = () => resetFields(4);
 
-    async function resetFieldsDeferred(level = 2, ms = 80) { //可选稳妥）把 resetFieldsDeferred 的延时再拉长一点
-        await delay(ms); // 延后一个很小的时间，避开 LWC 的一次同步校验周期
-        await resetFields(level); // 再去清空
+    async function resetFieldsDeferred(level = 2, ms = 80) {
+        await delay(ms);
+        await resetFields(level);
     }
 
     async function pickEstudiVariant() {
@@ -195,14 +217,12 @@
     }
 
     function requestApplyComm() {
-        // 弹窗开着就先记一笔，等关闭后再执行
         if (ST.modalOpen || ST.choosing) { COMM_PENDING = true; return; }
-        // 简单防抖
         clearTimeout(COMM_DEBOUNCE_T);
         COMM_DEBOUNCE_T = setTimeout(() => {
             COMM_PENDING = false;
-            applyComm(); // 真正调用
-        }, 160);// （可选）把通信的防抖再宽一点
+            applyComm();
+        }, 160);
     }
 
     function* walkDeep(root, opts = {}) {
@@ -272,7 +292,6 @@
             }
             host.dispatchEvent(new CustomEvent('change', { detail:{ value:text }, bubbles:true, composed:true }));
             host.dispatchEvent(new Event('blur', { bubbles:true, composed:true }));
-            // —— 关键：若是必填字段且文本非空，主动清除错误并触发一次校验 —— //
             try {
                 if (text && text.trim() !== '') {
                     if (typeof host.setCustomValidity === 'function') host.setCustomValidity('');
@@ -343,10 +362,8 @@
             });
             function done(result){ root.remove(); style.remove(); resolve(result); }
 
-            //可选
             //function done(result){
             //  try { root.remove(); style.remove(); } catch(_) {}
-            // 兜底：任何关闭路径都把标志位清掉
             //  ST.modalOpen = false;
             //  ST.choosing = false;
             //  resolve(result);
@@ -384,7 +401,6 @@
                 ST.modalOpen = false;
                 ST.choosing = false;
                 ST.canAutofill = true;
-                // 如果有挂起的 applyComm 请求，这里补一次（带防抖）
                 if (typeof COMM_PENDING !== 'undefined' && COMM_PENDING) requestApplyComm();
                 resolve(val ?? null);
             };
@@ -393,15 +409,12 @@
 
             document.querySelectorAll('.af-option').forEach((btn, i) => {
                 const handler = (ev) => {
-                    // 防止被外层 Lightning 失焦/遮罩抢走事件
                     ev.preventDefault();
                     ev.stopPropagation();
                     ev.stopImmediatePropagation();
                     finalize(choices[i]);
                 };
-                // 提前于 click 的通道，更稳
                 btn.addEventListener('pointerdown', handler, { once: true, capture: true });
-                // 兜底（某些环境仍走 click）
                 btn.addEventListener('click', handler, { once: true, capture: true });
             });
 
@@ -804,8 +817,8 @@
             if (!ST.subtipo) return;
             clearTimeout(t);
             t = setTimeout(async () => {
-                if (ST.modalOpen || ST.choosing) return; // 先 guard
-                const token = nextToken(); // 再递增
+                if (ST.modalOpen || ST.choosing) return;
+                const token = nextToken();
 
                 const key = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
                 if (ST.lastKeyName === key && ST.lastTextName != null && ST._lastHadRule === true) return;
@@ -873,8 +886,8 @@
             if (!ST.canAutofill && !ST.lockNameOnce && !ST.preNameOverride) return;
             clearTimeout(t);
             t = setTimeout(async () => {
-                if (ST.modalOpen || ST.choosing) return; // 先 guard
-                const token = nextToken(); // 再递增
+                if (ST.modalOpen || ST.choosing) return; //guard
+                const token = nextToken(); // next
 
                 const key2 = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
                 const nombreKey = ST.lastNameKey || ST.lastTextName || '';
@@ -1000,16 +1013,15 @@
         await resetFieldsDeferred(2);
         const choice = await showChoiceModal('Seleccione Pre-requisito', rule);
 
-        // —— ★ 新增：03/07 的 ESTUDI 需要二级弹窗 —— //
+        // modal a 2n nivel //
         const keyNow = `${ST.tipo ?? ''}/${ST.subtipo ?? ''}`;
         const pickedLabel = (typeof choice === 'object'
                              ? (choice.label ?? choice.write ?? '')
                              : String(choice)).trim().toUpperCase();
 
         if (keyNow === '03/07' && pickedLabel === 'ESTUDI') {
-            const v = await pickEstudiVariant(); // 打开二级弹窗
-            if (!v) return; // 取消就退出
-            // 用二级选择的结果覆盖
+            const v = await pickEstudiVariant(); // abrir modal 2n nivel
+            if (!v) return; // cancelar/cerrar
             const finalWrite = v.write ?? v.label ?? '';
             const finalKey = v.key ?? finalWrite;
 
@@ -1018,7 +1030,7 @@
             ST.lastNameKey = finalKey;
             ST.canAutofill = true;
             requestApplyComm();
-            return; // 二级路径到此结束，避免继续走一级写入
+            return;
         }
 
         if (choice == null) return;
@@ -1096,7 +1108,8 @@
                 resetFormState();
 
                 // 2) Modo por URL
-                if (RX_NEW.test(href) || RX_CREATE.test(href)) ST.mode = 'new';
+                //if (RX_NEW.test(href) || RX_CREATE.test(href)) ST.mode = 'new';
+                if (RX_NEW.test(href)) ST.mode = 'new';
                 else if (RX_EDIT.test(href)) ST.mode = 'edit';
                 else if (RX_VIEW.test(href)) ST.mode = 'view';
                 else ST.mode = 'view';
