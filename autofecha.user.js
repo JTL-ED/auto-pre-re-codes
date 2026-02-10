@@ -37,11 +37,11 @@
 
     // Activar o desactivar console.log (imresión del cahce en console) del cache. ¡reglas!
     window.CP_DEBUG = window.CP_DEBUG || {
-        aceptacionLog: false, //true para activar log
-        aceptacionEveryMs: 0, // 0 = desactivado, 5000 ms retard para imprimir
+        aceptacionLog: true, //true para activar log
+        aceptacionEveryMs: 5000, // 0 = desactivado, 5000 ms retard para imprimir
 
-        realFinLog: false,
-        realFinEveryMs: 0,
+        realFinLog: true,
+        realFinEveryMs: 5000,
     };
 
     // Activar o desactivar ventana flotante de relleno de fecha. ¡reglas!
@@ -1591,59 +1591,82 @@
         const START_DATE_NAME = 'Start_date__c';
         const START_DATE_SKIP_SET = new Set(['FASE OBRA','OBRA BACKLOG']);
 
-        const NAME_RULES = {
-            '01/01': [{label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT', 'DIVISIO', 'REHABILITACIO'],
-            '01/04': 'CES OC',
-            '01/06': 'IE',
-            '01/07': ['FASE OBRA', 'ANULAR', 'PTE ACT CLIENT'],
-            '01/19': 'CES',
-            '01/18': 'OBRA CIVIL',
-            '01/20': 'AJUSTAT',
-            '01/21': 'ACTA',
-            //'01/24': '',
-            //'01/25': '',
-            //'01/26': '',
-            //'01/27': '',
-            //----------------------------------------------------------------------------------------------------------------
-            '02/08': 'ESCREIX',
-            //----------------------------------------------------------------------------------------------------------------
-            '03/09': 'CP2',
-            '03/11': {label: 'PART', write: 'PART', key: 'PART_Permisos' },
-            '03/13': 'PER',
-            '03/14': 'APS',
-            '03/07': ['OBRA BACKLOG', 'CP1', 'SUPEDITAT', 'CIVICOS', 'ESTUDI', 'AGP', 'CTR', 'FASES', 'TRAÇAT', 'CE'],
-            //----------------------------------------------------------------------------------------------------------------
-            //'04/15': '',
-            //'04/16': '',
-        };
-        // ¡reglas! comentarios push
-        const COMM_RULES_3 = {
-            '01/01/DIVISIO': 'Pendiente que nos haga llegar la División Horizontal para poder finalizar el expediente.',
-            '01/01/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
-            '01/01/REHABILITACIO': 'Pendiente que nos haga llegar la nueva estructura del edificio para el reparto de la potencia.',
-            '01/01/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
-            //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-            '01/07/ANULAR': 'Pendiente aportación carta de anulación, justificante de pago y certificado de titularidad bancaria.',
-            '01/07/FASE OBRA': '',
-            '01/07/PTE ACT CLIENT': 'Temporalmente, la gestión del expediente queda suspendida a la espera de la aportación por su parte de los documentos que se le han requerido.',
-        };
+       const NAME_RULES = {
+        //'01/01': [{label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT', 'DIVISIO', 'REHABILITACIO'],
+        '01/01': ['DIVISIO', 'REHABILITACIO'],
+        //'01/04': 'CES OC',
+        //'01/06': 'IE',
+        '01/07': ['AJUSTAT', 'ACTA', 'CES', 'IE', 'CES OC', {label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT','FASE OBRA', 'ANULAR', 'PTE ACT CLIENT'],
+        //'01/19': 'CES',
+        '01/18': 'OBRA CIVIL',
+        //'01/20': 'AJUSTAT',
+        //'01/21': 'ACTA',
+        //'01/24': '',
+        //'01/25': '',
+        //'01/26': '',
+        //'01/27': '',
+        //----------------------------------------------------------------------------------------------------------------
+        '02/08': 'ESCREIX',
+        //----------------------------------------------------------------------------------------------------------------
+        '03/09': 'CP2',
+        '03/11': {label: 'PART', write: 'PART', key: 'PART_Permisos' },
+        '03/13': 'PER',
+        '03/14': 'APS',
+        '03/07': ['OBRA BACKLOG', 'CP1', 'SUPEDITAT', 'CIVICOS', 'ESTUDI', 'AGP', 'CTR', 'FASES', 'TRAÇAT', 'CE'],
+        //----------------------------------------------------------------------------------------------------------------
+        //'04/15': '',
+        //'04/16': '',
+    };
 
-        const COMM_RULES_2 = {
-            '01/04': 'En breve les serán requeridos los documentos necesarios para realizar la cesión del CT/CM.',
-            '01/06': 'Pendiente instalacion de la Caja General de Protección/Caja de Protección y Medida.',
-            //'01/08': 'Pendiente de pago del sobrecoste  indicado en las condiciones - técnico econòmicas remitidas.',
-            '01/18': 'Pendiente recibir información del espacio reservado para ubicar el CT/CM.',
-            '01/19': 'En breve les serán requeridos los documentos necesarios para la cesión de las instalaciones.',
-            '01/20': 'Pendiente recibir proyecto eléctrico para revisión.',
-            '01/21': 'Una vez validado el proyecto eléctrico, tendrá que aportar permisos y autorizaciones concedidas, y cronograma de ejecución de obra para programar Acta de Lanzamiento.',
-            //'01/24': '',
-            //'01/25': '',
-            //'01/26': '',
-            //'01/27': '',
-            //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    const COMM_RULES_3 = {
+        '01/01/DIVISIO': 'Pendiente que nos haga llegar la División Horizontal para poder finalizar el expediente.',
+        //'01/01/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
+        '01/01/REHABILITACIO': 'Pendiente que nos haga llegar la nueva estructura del edificio para el reparto de la potencia.',
+        //'01/01/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
 
-            '02/08': 'Pendiente de pago del sobrecoste  indicado en las condiciones - técnico econòmicas remitidas.',
-        };
+
+        //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        '01/07/AJUSTAT': 'Pendiente recibir proyecto eléctrico para revisión.',
+        '01/07/ACTA': 'Una vez validado el proyecto eléctrico, tendrá que aportar permisos y autorizaciones concedidas, y cronograma de ejecución de obra para programar Acta de Lanzamiento.',
+        '01/07/CES': 'En breve les serán requeridos los documentos necesarios para la cesión de las instalaciones',
+        '01/07/IE': 'Pendiente instalacion de la Caja General de Protección/Caja de Protección y Medida.',
+        '01/07/CES OC': 'En breve les serán requeridos los documentos necesarios para realizar la cesión del CT/CM.',
+        '01/07/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
+        '01/07/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
+
+
+        //Original: Subtipo Otros
+        '01/07/FASE OBRA': '',
+        '01/07/ANULAR': 'Pendiente aportación carta de anulación, justificante de pago y certificado de titularidad bancaria.',
+        '01/07/PTE ACT CLIENT': 'Temporalmente, la gestión del expediente queda suspendida a la espera de la aportación por su parte de los documentos que se le han requerido.',
+    };
+
+    const COMM_RULES_2 = {
+        //CES OS--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/04': 'En breve les serán requeridos los documentos necesarios para realizar la cesión del CT/CM.',
+
+        //IE--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/06': 'Pendiente instalacion de la Caja General de Protección/Caja de Protección y Medida.',
+
+        //'01/08': 'Pendiente de pago del sobrecoste  indicado en las condiciones - técnico econòmicas remitidas.',
+        '01/18': 'Pendiente recibir información del espacio reservado para ubicar el CT/CM.',
+
+        //CES-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/19': 'En breve les serán requeridos los documentos necesarios para la cesión de las instalaciones',
+
+        //AJUSTAT-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/20': 'Pendiente recibir proyecto eléctrico para revisión.',
+
+        //ACTA-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //'01/21': 'Una vez validado el proyecto eléctrico, tendrá que aportar permisos y autorizaciones concedidas, y cronograma de ejecución de obra para programar Acta de Lanzamiento.',
+        //'01/24': '',
+        //'01/25': '',
+        //'01/26': '',
+        //'01/27': '',
+        //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+        '02/08': 'Pendiente de pago del sobrecoste  indicado en las condiciones - técnico econòmicas remitidas.',
+    };
 
         const NAME_LABEL_RX = /Nombre del Pre-?requisito/i;
         const COMM_LABEL_RX = /Comunicaci[oó]n al cliente\s*\(push\)/i;
@@ -2660,6 +2683,7 @@
         const USE_ACCEPTACION = new Set([
             'IE',
             'AGP',
+            'CE',
             //'xxx',
         ]);
 
