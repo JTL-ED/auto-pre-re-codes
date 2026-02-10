@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         NEW-Pre-requisito-auto fecha
+// @name         NEW-Pre-requisito
 // @namespace    https://accesosede.my.salesforce.com/
 // @version      1.5.0
 // @description  solucionar cambio de (VERSIÓ 14) PROCEDIMENT PREREQUISITS
