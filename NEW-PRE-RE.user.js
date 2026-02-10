@@ -16,11 +16,10 @@
     const MODAL_WHITELIST = new Set(['01/01', '01/07','03/07']);
 
     const NAME_RULES = {
-        //'01/01': [{label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT', 'DIVISIO', 'REHABILITACIO'],
-        '01/01': ['DIVISIO', 'REHABILITACIO'],
+        //'01/01': [{label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT'],
         //'01/04': 'CES OC',
         //'01/06': 'IE',
-        '01/07': ['AJUSTAT', 'ACTA', 'CES', 'IE', 'CES OC', {label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT','FASE OBRA', 'ANULAR', 'PTE ACT CLIENT'],
+        '01/07': ['AJUSTAT', 'ACTA', 'CES', 'IE', 'CES OC', {label: 'PART', write: 'PART', key: 'PART_Acciones' }, 'REQ ORG CLIENT','FASE OBRA', 'ANULAR', 'PTE ACT CLIENT', 'DIVISIO', 'REHABILITACIO'],
         //'01/19': 'CES',
         '01/18': 'OBRA CIVIL',
         //'01/20': 'AJUSTAT',
@@ -43,9 +42,9 @@
     };
 
     const COMM_RULES_3 = {
-        '01/01/DIVISIO': 'Pendiente que nos haga llegar la División Horizontal para poder finalizar el expediente.',
+        //'01/01/DIVISIO': 'Pendiente que nos haga llegar la División Horizontal para poder finalizar el expediente.',
         //'01/01/PART_Acciones': 'Pendiente aportación de los permisos de terceros afectados para la realización de los trabajos.',
-        '01/01/REHABILITACIO': 'Pendiente que nos haga llegar la nueva estructura del edificio para el reparto de la potencia.',
+        //'01/01/REHABILITACIO': 'Pendiente que nos haga llegar la nueva estructura del edificio para el reparto de la potencia.',
         //'01/01/REQ ORG CLIENT': 'Pendiente aportación de la documentación requerida por los Organismos Oficiales en el proceso de tramitación de permisos.',
 
 
@@ -63,6 +62,8 @@
         '01/07/FASE OBRA': '',
         '01/07/ANULAR': 'Pendiente aportación carta de anulación, justificante de pago y certificado de titularidad bancaria.',
         '01/07/PTE ACT CLIENT': 'Temporalmente, la gestión del expediente queda suspendida a la espera de la aportación por su parte de los documentos que se le han requerido.',
+        '01/07/DIVISIO': 'Pendiente que nos haga llegar la División Horizontal para poder finalizar el expediente.',
+        '01/07/REHABILITACIO': 'Pendiente que nos haga llegar la nueva estructura del edificio para el reparto de la potencia.',
     };
 
     const COMM_RULES_2 = {
