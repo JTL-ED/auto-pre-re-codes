@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         NEW-Pre-requisito
-// @namespace    sf-control-plazos
+// @name         NEW-Pre-requisito-auto fecha
+// @namespace    https://accesosede.my.salesforce.com/
 // @version      1.5.0
-// @description  Integra dos funciones: (1) Ultima "Fecha real fin" desde related list Pre-requisitos (Constructive_project__c) con cache por recordId y soporte CMP create. (2) "Fecha de Aceptacion" (Record__c) con la misma logica original 1.3.1 (cache unico persistente).
+// @description  solucionar cambio de (VERSIÓ 14) PROCEDIMENT PREREQUISITS
 // @match        https://*.lightning.force.com/*
 // @match        https://*.my.salesforce.com/*
+// @author       Jiatai + Carles + GPT
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
