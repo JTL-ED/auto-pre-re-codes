@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         NEW-Pre-requisito
+// @name         NEW-Pre-requisito-auto fecha V2
 // @namespace    https://accesosede.my.salesforce.com/
 // @version      1.5.0
 // @description  solucionar cambio de (VERSIÓ 14) PROCEDIMENT PREREQUISITS
@@ -20,6 +20,8 @@
     // ---------------------------------------------------------------------------------------------------------------------------------------------------
     // Para agregar o eliminar los festivos. ¡reglas!
     window.CP_HOLIDAYS = window.CP_HOLIDAYS || [
+
+        //Estatal y Cataluña
         "2026-01-01", // Año Nuevo (Estatal)
         "2026-01-06", // Reyes Magos (Estatal)
         "2026-04-03", // Viernes Santo (Estatal)
@@ -766,30 +768,32 @@
     // MODULO 3: UI popover fechas
     // -------------------------------------------------------------------------------------------------------------------------------------------
     (function () {
-        //"use strict"; //"use strict" activa el modo estricto de JavaScript solo en el ámbito donde aparece.
 
         const MODAL_ID = "cp_fecha_picker_modal";
         let suppressNextOpen = false;
 
-        // URL Create (cmp)
-        const RX_NEW = /\/lightning\/cmp\/c__nnssCreatePrerequisito(?:\?|$)/i;
+        // Detectores de contexto (URL) //Create/Edit/View // ¡reglas!
+        const RX_NEW = /\/lightning\/cmp\/c__nnssCreatePrerequisito(?:\?|$)/i; // tu create por cmp
+        const RX_EDIT = /\/lightning\/r\/Prerequisite__c\/[^/]+\/edit(?:\?|$)/i; // edit estandar
+        //const RX_VIEW = /\/lightning\/r\/Prerequisite__c\/[^/]+\/view(?:\?|$)/i; // view estandar
 
-        function isCreateUrl() {
-            return RX_NEW.test(location.pathname);
+        function isAllowedUrl() {
+            const path = location.pathname || "";
+            return RX_NEW.test(path) || RX_EDIT.test(path); //|| RX_VIEW.test(path);
         }
 
         // Campos
         const START_DATE_NAME = "Start_date__c";
         const EXPECTED_DATE_NAME = "Expected_date__c";
 
-        //popover
+        // popover
         const ENABLE_START_DATE_POPOVER = !!window.CP_FLAGS.enableStartDatePopover;
         const ENABLE_EXPECTED_DATE_POPOVER = !!window.CP_FLAGS.enableExpectedDatePopover;
         // Ya tiene una variable global en el modulo 0
-        const CP_HOLIDAYS = [
-            // "2026-01-01",
-            // "2026-01-06",
-        ];
+        //const CP_HOLIDAYS = [
+        // "2026-01-01",
+        // "2026-01-06",
+        //];
 
         // Opciones del popover para Expected_date__c, para agregar o eliminar opciones de ajuste de plazo. ¡reglas!
         // kind: "bdays" = dias laborables (salta findes + festivos)
@@ -799,9 +803,9 @@
             { label: "15 días (Laborales)", kind: "bdays", value: 15 },
             { label: "30 días (Laborales)", kind: "bdays", value: 30 },
             { label: "60 días (Laborales)", kind: "bdays", value: 60 },
-            { label: "1 mes (No laborales)", kind: "months", value: 1 },
-            { label: "2 meses (No laborales)", kind: "months", value: 2 },
-            { label: "3 meses (No laborales)", kind: "months", value: 3 },
+            { label: "1 mes (Naturales)", kind: "months", value: 1 },
+            { label: "2 meses (Naturales)", kind: "months", value: 2 },
+            { label: "3 meses (Naturales)", kind: "months", value: 3 },
         ];
 
 
@@ -1126,7 +1130,7 @@
                 return b;
             };
         }
-        // Ajuste manual del popover (en píxeles), para ajustar posicion de popover(ventana flotante) ¡reglas!
+        // Ajuste manual del popover (en píxeles), para ajustar posicion de popover(ventana flotante), popover de fechas ¡reglas!
         const POPOVER_SHIFT_X = 0; // positivo = derecha, negativo = izquierda
         const POPOVER_SHIFT_Y = 0; // positivo = abajo, negativo = arriba
 
@@ -1152,7 +1156,7 @@
             panel.style.alignItems = "flex-start";
 
             const minW = 320;
-            const maxW = 480;
+            const maxW = 430;
             const extraW = 0;
             const desiredW = Math.max(minW, Math.min(maxW, anchorRect.width + extraW));
             panel.style.width = desiredW + "px";
@@ -1209,7 +1213,7 @@
 
             if (mode === "start") {
                 buttons.bAceptacion = mkTile("Fecha de Aceptacion");
-                buttons.bFinal = mkTile("Fecha Ultimo cierre PRE");
+                buttons.bFinal = mkTile("Fecha último cierre PRE");
                 buttons.bCancel = mkTile("Cancelar");
                 grid.appendChild(buttons.bAceptacion);
                 grid.appendChild(buttons.bFinal);
@@ -1474,7 +1478,8 @@
         }
 
         document.addEventListener("pointerdown", (ev) => {
-            if (!isCreateUrl()) return;
+            //if (!isCreateUrl()) return;
+            if (!isAllowedUrl()) return;
 
             // Si clicas dentro del popover, no reabrir
             try {
@@ -2699,6 +2704,16 @@
             "PTE ACT CLIENT",
         ]);
 
+        // Reglas para auto-rellenar Expected_date__c por Nombre (en MAYUSCULAS)
+        // kind: "bdays" = dias laborables (salta findes + festivos)
+        // kind: "months" = meses calendario y ajusta a siguiente laborable
+        const EXPECTED_BY_NAME = new Map([
+            ["IE", { kind:"months", value: 2 }],
+            ["AGP", { kind:"months", value: 2 }],
+            //["OBRA BACKLOG", { kind: "bdays", value: 10 }],
+            // ["CE", { kind:"months", value: 1 }],
+        ]);
+
         function getRuleForCurrentPrereqName() {
             const raw = (ST.lastTextName || "").trim();
             const name = raw.toUpperCase();
@@ -2785,14 +2800,16 @@
         // === Helpers de "Fecha de inicio" ===
         function findStartDateInput() {
             // 1) directo por atributo name
-            let el = document.querySelector(`input.slds-input[name="${START_DATE_NAME}"]`);
+            //let el = document.querySelector(`input.slds-input[name="${START_DATE_NAME}"]`);
+            let el = document.querySelector(`input[name="${START_DATE_NAME}"]`);
             if (el) return el;
 
             // 2) búsqueda más profunda por si el input está dentro de shadowRoots
             for (const n of walkDeep(document, { maxNodes: 3000, maxDepth: 6 })) {
                 try {
                     if (!n.querySelectorAll) continue;
-                    el = n.querySelector(`input.slds-input[name="${START_DATE_NAME}"]`);
+                    //el = n.querySelector(`input.slds-input[name="${START_DATE_NAME}"]`);
+                    el = n.querySelector(`input[name="${START_DATE_NAME}"]`);
                     if (el) return el;
                 } catch (_) {}
             }
@@ -2869,8 +2886,12 @@
                         _startDateWasCache = true;
                         _startDateWasAuto = false;
                         _startDateAutofilledOnce = true;
-                        // opcional: si quieres limpiar expected auto cuando estas en estas reglas
-                        clearExpectedIfAuto();
+
+                        // Forzar: Start ha cambiado por cache -> borrar Expected y recalcular
+                        setTimeout(() => {
+                            _lastStartRaw = null; // fuerza deteccion de cambio
+                            handleStartChangeRecalcExpected();
+                        }, 80);
                     }
                 }
                 return; // importante: no seguir con logica default
@@ -2890,13 +2911,19 @@
                 return;
             }
 
-            // Si esta vacio -> autocompleta hoy (una vez)
             if (!current && !_startDateAutofilledOnce){
                 await delay(80);
                 const ok = tryAutofillStartDate();
                 _startDateAutofilledOnce = !!ok;
                 _startDateWasAuto = !!ok;
                 _startDateWasCache = false;
+
+                if (ok) {
+                    setTimeout(() => {
+                        _lastStartRaw = null; // fuerza detección para el primer cambio
+                        handleStartChangeRecalcExpected();
+                    }, 80);
+                }
             }
         }
 
@@ -2918,12 +2945,41 @@
             return `${pad2(d.getDate())}/${pad2(d.getMonth()+1)}/${d.getFullYear()}`;
         }
 
-        function parseES(s){ // dd/mm/yyyy -> Date o null
-            const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((s||'').trim());
-            if(!m) return null;
-            const dd = +m[1], MM = +m[2]-1, yyyy = +m[3];
-            const d = new Date(yyyy, MM, dd);
-            return (d && d.getFullYear()===yyyy && d.getMonth()===MM && d.getDate()===dd) ? d : null;
+        function parseES(s) {
+            const t = (s || "").toString().replace(/\u00A0/g, " ").trim();
+            if (!t) return null;
+
+            // dd/mm/yyyy (acepta 1 o 2 digitos en dd y mm)
+            let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+            if (m) {
+                const dd = +m[1], MM = +m[2] - 1, yyyy = +m[3];
+                const d = new Date(yyyy, MM, dd);
+                return (d && d.getFullYear() === yyyy && d.getMonth() === MM && d.getDate() === dd) ? d : null;
+            }
+
+            // yyyy-mm-dd
+            m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+            if (m) {
+                const yyyy = +m[1], MM = +m[2] - 1, dd = +m[3];
+                const d = new Date(yyyy, MM, dd);
+                return (d && d.getFullYear() === yyyy && d.getMonth() === MM && d.getDate() === dd) ? d : null;
+            }
+
+            // dd-mmm-yyyy (08-dic-2025 / 08-dic.-2025 / 08-dic-25 no, solo 4 digitos anio)
+            m = /^(\d{1,2})-([a-zñ]{3,4})\.?-(\d{4})$/i.exec(t.toLowerCase());
+            if (m) {
+                const MONTHS_ES = { ene:0,feb:1,mar:2,abr:3,may:4,jun:5,jul:6,ago:7,sep:8,oct:9,nov:10,dic:11 };
+                let mon = m[2];
+                if (mon === "sept") mon = "sep";
+                if (mon === "set") mon = "sep";
+                if (mon.length > 3) mon = mon.slice(0,3);
+                if (MONTHS_ES[mon] == null) return null;
+                const dd = +m[1], yyyy = +m[3];
+                const d = new Date(yyyy, MONTHS_ES[mon], dd);
+                return (d && d.getFullYear() === yyyy && d.getMonth() === MONTHS_ES[mon] && d.getDate() === dd) ? d : null;
+            }
+
+            return null;
         }
 
         function ymd(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
@@ -2956,13 +3012,15 @@
 
         function findExpectedInput(){
             // primero intento rápido
-            let el = document.querySelector(`input.slds-input[name="${EXPECTED_DATE_NAME}"]`);
+            //let el = document.querySelector(`input.slds-input[name="${EXPECTED_DATE_NAME}"]`);
+            let el = document.querySelector(`input[name="${EXPECTED_DATE_NAME}"]`);
             if (el) return el;
             // búsqueda profunda por shadow roots/iframes
             for (const n of walkDeep(document, { maxNodes: 3000, maxDepth: 6 })) {
                 try{
                     if(!n.querySelectorAll) continue;
-                    el = n.querySelector(`input.slds-input[name="${EXPECTED_DATE_NAME}"]`);
+                    //el = n.querySelector(`input.slds-input[name="${EXPECTED_DATE_NAME}"]`);
+                    el = n.querySelector(`input[name="${EXPECTED_DATE_NAME}"]`);
                     if(el) return el;
                 }catch(_){}
             }
@@ -2980,40 +3038,131 @@
                 }
             }catch(_){}
         }
+        let _lastStartRaw = null;
+
+        function clearExpectedBecauseStartChanged() {
+            const e = findExpectedInput();
+            if (!e) return;
+            const cur = (e.value || "").trim();
+            if (!cur) return;
+            writeDateTextValue(e, "");
+            _expectedWasAuto = false;
+            _expectedAutofilledOnce = false;
+        }
+
+        function handleStartChangeRecalcExpected() {
+            if (ST.mode !== "new") return;
+
+            const s = findStartDateInput();
+            if (!s) return;
+
+            const raw = (s.value || "").trim();
+
+            // Primera vez: memoriza y si ya hay valor, recalcula Expected igualmente
+            if (_lastStartRaw === null) {
+                _lastStartRaw = raw;
+
+                if (raw) {
+                    clearExpectedBecauseStartChanged();
+                    setTimeout(() => {
+                        try { maybeHandleExpectedAfterNameChange(); } catch(_) {}
+                    }, 80);
+                }
+                return;
+            }
+
+            // Si ha cambiado Start (manual o por cache)
+            if (raw !== _lastStartRaw) {
+                clearExpectedBecauseStartChanged();
+
+                setTimeout(() => {
+                    try { maybeHandleExpectedAfterNameChange(); } catch(_) {}
+                }, 80);
+            }
+
+            _lastStartRaw = raw;
+        }
+
+        //const EXPECTED_BY_NAME = new Map([
+        //    ["IE", { kind: "bdays", value: 15 }],
+        //    //["xxx", { kind: "bdays", value: 30 }],
+        //]);
+
+        //function isEstudiName(){
+        //    const v = (ST.lastTextName || '').trim().toUpperCase();
+        //    // Acepta "ESTUDI - ..." con espacios variables
+        //    return /^ESTUDI\s*-\s*/.test(v);
+        //}
 
         function isEstudiName(){
             const v = (ST.lastTextName || '').trim().toUpperCase();
-            // Acepta "ESTUDI - ..." con espacios variables
-            return /^ESTUDI\s*-\s*/.test(v);
+            return v === 'ESTUDI' || /^ESTUDI\s*-\s*/.test(v);
         }
 
-        async function maybeHandleExpectedAfterNameChange(){
+        function addMonthsCalendarAndAdjust(dateObj, months) {
+            const y = dateObj.getFullYear();
+            const m = dateObj.getMonth();
+            const day = dateObj.getDate();
+
+            let d = new Date(y, m + months, day);
+            while (!isWeekend(d) && isHoliday(d) || isWeekend(d)) {
+                d.setDate(d.getDate() + 1);
+            }
+            return d;
+        }
+
+
+        async function maybeHandleExpectedAfterNameChange() {
             if (ST.mode !== 'new') return;
+            if (!_nameConfirmed) return;
 
             const el = findExpectedInput();
-            if(!el) return;
+            if (!el) return;
 
             // Si ya hay valor manual, respetamos
             const current = (el.value || '').trim();
-            if(current && !_expectedWasAuto) return;
+            if (current && !_expectedWasAuto) return;
 
-            // Si el Nombre no es ESTUDI - XXX → limpiar si lo puso el script
-            if (!isEstudiName()){
+            const rawName = (ST.lastTextName || '').trim();
+            const nameKey = rawName.toUpperCase();
+
+            // Base: Start_date__c si existe y es válida; si no, hoy
+            const startEl = findStartDateInput?.();
+            const base = (startEl && parseES(startEl.value || '')) || null;
+            if (!base) {
+                // Si no hay Start valido, no calculamos Expected
+                return;
+            }
+
+            // 1) Reglas por nombre (IE, AGP, etc.)
+            const rule = EXPECTED_BY_NAME.get(nameKey);
+            if (rule) {
+                HOLIDAYS_SET = buildHolidaySetGlobal(); // refresca festivos
+
+                let target = null;
+                if (rule.kind === 'bdays') target = addBusinessDays(base, rule.value);
+                else if (rule.kind === 'months') target = addMonthsCalendarAndAdjust(base, rule.value);
+
+                if (target) {
+                    const txt = formatES(target); // dd/mm/yyyy
+                    if (writeDateTextValue(el, txt)) {
+                        _expectedAutofilledOnce = true;
+                        _expectedWasAuto = true;
+                    }
+                }
+                return;
+            }
+
+            // 2) Lógica ESTUDI - XXX (la que ya tenías)
+            if (!isEstudiName()) {
                 clearExpectedIfAuto();
                 return;
             }
 
-            // Base: Start_date__c si existe y es válida; si no, hoy
-            const startEl = findStartDateInput?.();
-            const base =
-                  (startEl && parseES(startEl.value || '')) ||
-                  new Date();
-
-            // Sumar 10 días laborables (lun-vie) para sumar dias en prerrequisito ESTUDI - XXX
             const target = addBusinessDays(base, 10);
             const txt = formatES(target);
 
-            if (writeDateTextValue(el, txt)){
+            if (writeDateTextValue(el, txt)) {
                 _expectedAutofilledOnce = true;
                 _expectedWasAuto = true;
             }
@@ -3046,6 +3195,29 @@
         function install() {
             document.addEventListener('focusin', onFocusIn, true);
             document.addEventListener('change', onPickChange, true);
+            document.addEventListener("input", (e) => {
+                const t = e.target;
+                if (!t || t.tagName !== "INPUT") return;
+                if ((t.getAttribute("name") || "") === START_DATE_NAME) {
+                    handleStartChangeRecalcExpected();
+                }
+            }, true);
+
+            document.addEventListener("change", (e) => {
+                const t = e.target;
+                if (!t || t.tagName !== "INPUT") return;
+                if ((t.getAttribute("name") || "") === START_DATE_NAME) {
+                    handleStartChangeRecalcExpected();
+                }
+            }, true);
+
+            document.addEventListener("blur", (e) => {
+                const t = e.target;
+                if (!t || t.tagName !== "INPUT") return;
+                if ((t.getAttribute("name") || "") === START_DATE_NAME) {
+                    handleStartChangeRecalcExpected();
+                }
+            }, true);
         }
 
         (function monitorNewPrereqPage(){
