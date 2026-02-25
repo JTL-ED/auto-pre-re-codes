@@ -775,7 +775,7 @@
         // Detectores de contexto (URL) //Create/Edit/View // ¡reglas!
         const RX_NEW = /\/lightning\/cmp\/c__nnssCreatePrerequisito(?:\?|$)/i; // tu create por cmp
         const RX_EDIT = /\/lightning\/r\/Prerequisite__c\/[^/]+\/edit(?:\?|$)/i; // edit estandar
-        //const RX_VIEW = /\/lightning\/r\/Prerequisite__c\/[^/]+\/view(?:\?|$)/i; // view estandar
+        const RX_VIEW = /\/lightning\/r\/Prerequisite__c\/[^/]+\/view(?:\?|$)/i; // view estandar
 
         function isAllowedUrl() {
             const path = location.pathname || "";
