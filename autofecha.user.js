@@ -779,7 +779,7 @@
 
         function isAllowedUrl() {
             const path = location.pathname || "";
-            return RX_NEW.test(path) || RX_EDIT.test(path); //|| RX_VIEW.test(path);
+            return RX_NEW.test(path) || RX_EDIT.test(path) || RX_VIEW.test(path);
         }
 
         // Campos
