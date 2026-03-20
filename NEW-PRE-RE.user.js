@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NEW-Pre-requisito
 // @namespace    https://accesosede.my.salesforce.com/
-// @version      1.5.0
+// @version      1.6.2
 // @description  solucionar cambio de (VERSIÓ 14) PROCEDIMENT PREREQUISITS
 // @match        https://*.lightning.force.com/*
 // @match        https://*.my.salesforce.com/*
