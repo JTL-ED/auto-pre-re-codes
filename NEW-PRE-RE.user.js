@@ -40,11 +40,11 @@
 
     // Activar o desactivar console.log (imresión del cahce en console) del cache. ¡reglas!
     window.CP_DEBUG = window.CP_DEBUG || {
-        aceptacionLog: true, //true para activar log
-        aceptacionEveryMs: 5000, // 0 = desactivado, 5000 ms retard para imprimir
+        aceptacionLog: false, //true para activar log
+        aceptacionEveryMs: 0, // 0 = desactivado, 5000 ms retard para imprimir
 
-        realFinLog: true,
-        realFinEveryMs: 5000,
+        realFinLog: false,
+        realFinEveryMs: 0,
     };
 
     // Activar o desactivar ventana flotante de relleno de fecha. ¡reglas!
