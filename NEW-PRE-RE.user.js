@@ -2721,8 +2721,8 @@
         ]);
 
         const USE_REAL_FIN = new Set([
-            'FASE OBRA',
-            'OBRA BACKLOG',
+            //'FASE OBRA',
+            //'OBRA BACKLOG',
         ]);
 
         //const SKIP_TODAY_START = new Set([
