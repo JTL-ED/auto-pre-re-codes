@@ -40,7 +40,7 @@
 
     // Activar o desactivar console.log (imresión del cahce en console) del cache. ¡reglas!
     window.CP_DEBUG = window.CP_DEBUG || {
-        aceptacionLog: true, //true para activar log
+        aceptacionLog: false, //true para activar log
         aceptacionEveryMs: 0, // 0 = desactivado, 5000 ms retard para imprimir
 
         realFinLog: false,
