@@ -2716,7 +2716,7 @@
         const USE_ACCEPTACION = new Set([
             //'IE',
             //'AGP',
-            'CE',
+            //'CE',
             //'xxx',
         ]);
 
@@ -2735,7 +2735,7 @@
             // Ejemplos (pon los tuyos reales):
             // "IE",
             // "AGP",
-            "ESTUDI",
+            //"ESTUDI",
             // "CTR",
         ]);
         // Reglas para auto-rellenar Expected_date__c por Nombre (en MAYUSCULAS)
