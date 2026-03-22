@@ -78,8 +78,8 @@
         // RESTAURAR CACHE tras F5
         if (sessionStorage.getItem(STORAGE_KEY)) {
             window.CONTROL_PLAZOS_FECHA_ACEPTACION = sessionStorage.getItem(STORAGE_KEY);
-            //console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
-            //if (DEBUG_LOG) console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
+            console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
+            if (DEBUG_LOG) console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
 
         } else {
             window.CONTROL_PLAZOS_FECHA_ACEPTACION = null;
@@ -628,7 +628,7 @@
             if (isCreatePrerequisitoCmpUrl()) {
                 restoreCacheForRecord(recordId);
                 if (DEBUG_LOG) {
-                    //console.log("[Fecha real fin] Key:", `${ONLY_OBJECT_API}:${recordId}`, "| CREATE: usando cache:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null);
+                    console.log("[Fecha real fin] Key:", `${ONLY_OBJECT_API}:${recordId}`, "| CREATE: usando cache:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null);
                 }
 
                 return;
@@ -670,7 +670,7 @@
                 if (best.foundTable && !best.dateStr) {
                     // Importante: no borrar cache si no hay fecha.
                     setCacheForRecord(recordId, null);
-                    //console.log("[Fecha real fin] Key:", keyForLog, "| No hay fecha | origen:", reason, "| cache se mantiene:", sessionStorage.getItem(getStorageKey(recordId)) || null);
+                    console.log("[Fecha real fin] Key:", keyForLog, "| No hay fecha | origen:", reason, "| cache se mantiene:", sessionStorage.getItem(getStorageKey(recordId)) || null);
                     const raw = sessionStorage.getItem(getStorageKey(recordId));
                     const shown = (raw === NULL_MARK) ? null : (raw || null);
 
@@ -2732,10 +2732,11 @@
 
         // Solo estos prerrequisitos rellenan Start_date__c con HOY (si esta vacio)
         const TODAY_START = new Set([
+
             // Ejemplos (pon los tuyos reales):
             // "IE",
             // "AGP",
-            //"ESTUDI",
+            // "ESTUDI",
             // "CTR",
         ]);
         // Reglas para auto-rellenar Expected_date__c por Nombre (en MAYUSCULAS)
@@ -2747,6 +2748,8 @@
             //["OBRA BACKLOG", { kind: "bdays", value: 10 }],
             // ["CE", { kind:"months", value: 1 }],
         ]);
+
+        const ENABLE_ESTUDI_AUTO = false; // true = activa, false = desactiva
 
         function getRuleForCurrentPrereqName() {
             const raw = (ST.lastTextName || "").trim();
@@ -2966,7 +2969,8 @@
 
             const wantsTodayStart =
                   TODAY_START.has(nameNow)
-            || isEstudiName(); // <- ESTUDI o ESTUDI - XXX
+            || (ENABLE_ESTUDI_AUTO && isEstudiName());
+            //|| isEstudiName(); // <- ESTUDI o ESTUDI - XXX
 
             // Si no esta permitido, no rellenamos nada.
             if (!wantsTodayStart) {
@@ -3217,8 +3221,10 @@
             }
 
             // 2) Lógica ESTUDI - XXX (la que ya tenías)
-            if (!isEstudiName()) {
-                clearExpectedIfAuto();
+            //if (!isEstudiName()) {
+            if (!(ENABLE_ESTUDI_AUTO && isEstudiName())) {
+
+            clearExpectedIfAuto();
                 return;
             }
 
