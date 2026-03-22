@@ -40,7 +40,7 @@
 
     // Activar o desactivar console.log (imresión del cahce en console) del cache. ¡reglas!
     window.CP_DEBUG = window.CP_DEBUG || {
-        aceptacionLog: false, //true para activar log
+        aceptacionLog: true, //true para activar log
         aceptacionEveryMs: 0, // 0 = desactivado, 5000 ms retard para imprimir
 
         realFinLog: false,
@@ -79,7 +79,7 @@
         if (sessionStorage.getItem(STORAGE_KEY)) {
             window.CONTROL_PLAZOS_FECHA_ACEPTACION = sessionStorage.getItem(STORAGE_KEY);
             //console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
-            if (DEBUG_LOG) console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
+            //if (DEBUG_LOG) console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
 
         } else {
             window.CONTROL_PLAZOS_FECHA_ACEPTACION = null;
@@ -628,7 +628,7 @@
             if (isCreatePrerequisitoCmpUrl()) {
                 restoreCacheForRecord(recordId);
                 if (DEBUG_LOG) {
-                    console.log("[Fecha real fin] Key:", `${ONLY_OBJECT_API}:${recordId}`, "| CREATE: usando cache:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null);
+                    //console.log("[Fecha real fin] Key:", `${ONLY_OBJECT_API}:${recordId}`, "| CREATE: usando cache:", window.CONTROL_PLAZOS_FECHA_REAL_FIN || null);
                 }
 
                 return;
