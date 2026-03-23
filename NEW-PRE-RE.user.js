@@ -78,8 +78,8 @@
         // RESTAURAR CACHE tras F5
         if (sessionStorage.getItem(STORAGE_KEY)) {
             window.CONTROL_PLAZOS_FECHA_ACEPTACION = sessionStorage.getItem(STORAGE_KEY);
-            console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
-            if (DEBUG_LOG) console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
+            //console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
+            //if (DEBUG_LOG) console.log("[Control Plazos] Cache restaurado desde sessionStorage:", window.CONTROL_PLAZOS_FECHA_ACEPTACION);
 
         } else {
             window.CONTROL_PLAZOS_FECHA_ACEPTACION = null;
